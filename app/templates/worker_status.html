@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-4">Worker Status</h2>
+            <p>This page displays the current status of file processing tasks.</p>
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card text-white bg-info mb-3">
+                        <div class="card-header">Pending Tasks</div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ pending_count }}</h5>
+                            <p class="card-text">Files waiting to be processed.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-warning mb-3">
+                        <div class="card-header">Processing Tasks</div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ processing_count }}</h5>
+                            <p class="card-text">Files currently being processed.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-success mb-3">
+                        <div class="card-header">Completed Tasks</div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ completed_count }}</h5>
+                            <p class="card-text">Files successfully processed.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-white bg-danger mb-3">
+                        <div class="card-header">Failed Tasks</div>
+                        <div class="card-body">
+                            <h5 class="card-title">{{ failed_count }}</h5>
+                            <p class="card-text">Files that failed processing.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <hr>
+            <h3>Recent Tasks</h3>
+            <p>For a detailed list of all files, visit the <a href="{{ url_for('files.view_data') }}">View Data</a> page.</p>
+        </div>
+    </div>
+{% endblock content %}

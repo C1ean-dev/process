@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.Python
+build/
+dist/
+
+# Environments
+.env
+venv/
+env/
+.direnv/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+/instance/
+
+# Uploads and processed files
+/uploads/
+/aguardando_processo/
+/processando/
+/completos/
+/falhas/
+
+# Logs
+*.log
+logs/
+
+# IDEs and other tools
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.komodoproject
+
+# OS generated files
+.DS_Store
+.Trashes
+Thumbs.db

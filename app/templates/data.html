@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col-md-12">
+            <h2 class="mb-4">Uploaded Files and Processed Data</h2>
+
+            <div class="card mb-4">
+                <div class="card-header">
+                    Filter Data
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('files.view_data') }}" class="form-inline">
+                        {{ search_form.hidden_tag() }}
+                        <div class="form-group mr-2">
+                            {{ search_form.query.label(class="sr-only") }}
+                            {{ search_form.query(class="form-control", placeholder="Search by filename or content", value=current_query) }}
+                        </div>
+                        {{ search_form.submit(class="btn btn-outline-primary") }}
+                    </form>
+                    {% if current_query %}
+                        <p class="mt-2">Showing results for: <strong>{{ current_query }}</strong></p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <table class="table table-striped table-bordered">
+                <thead class="thead-dark">
+                    <tr>
+                        <th>Original Filename</th>
+                        <th>Upload Date</th>
+                        <th>Status</th>
+                        <th>Processed Data</th>
+                        <th>Uploaded By</th>
+                        <th>Actions</th> {# New column for actions #}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in files %}
+                    <tr>
+                        <td>{{ file.original_filename }}</td>
+                        <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>{{ file.status }}</td>
+                        <td>
+                            <div style="max-height: 100px; overflow-y: auto; white-space: pre-wrap;">
+                                {{ file.processed_data if file.processed_data else 'N/A' }}
+                            </div>
+                        </td>
+                        <td>{{ file.user.username }}</td>
+                        <td>
+                            {% if file.status == 'completed' %}
+                                <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-success btn-sm">Download</a>
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center">No files found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock content %}

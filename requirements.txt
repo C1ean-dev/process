@@ -1,0 +1,12 @@
+Flask
+Flask-SQLAlchemy
+Flask-WTF
+Flask-Login
+Werkzeug
+python-dotenv
+pytesseract
+Pillow
+pypdf
+pdf2image # Added for PDF to image conversion
+email_validator # Required for WTForms Email validator
+psycopg2-binary # Or another database driver like pymysql, sqlite3 is built-in

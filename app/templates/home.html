@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+    <div class="jumbotron">
+        <h1 class="display-4">Welcome to the File Processor!</h1>
+        <p class="lead">This application allows you to upload image and PDF files for processing, view processed data, and monitor worker statuses.</p>
+        <hr class="my-4">
+        <p>Use the navigation bar above to get started.</p>
+        {% if current_user.is_authenticated %}
+            <p>You are logged in as <strong>{{ current_user.username }}</strong> ({{ "Admin" if current_user.is_admin else "User" }}).</p>
+        {% else %}
+        <p>Please <a href="{{ url_for('auth.login') }}">log in</a> to access the features.</p>
+        {% endif %}
+    </div>
+{% endblock content %}
