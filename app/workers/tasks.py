@@ -21,17 +21,10 @@ import json # For storing equipments as JSON
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Explicitly set Tesseract and Poppler paths if they are not in system PATH
-# These paths are based on common Windows installations.
-# For Linux/Render, Tesseract and Poppler are usually in system PATH by default.
-# If running on Linux, these lines might not be strictly necessary but won't hurt.
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-# Add Poppler's bin directory to the PATH for pdf2image
-poppler_path = r'C:\poppler\Library\bin'
-if os.path.exists(poppler_path) and poppler_path not in os.environ['PATH']:
-    os.environ['PATH'] += os.pathsep + poppler_path
-    logger.info(f"Added Poppler path to environment PATH: {poppler_path}")
+# Set Tesseract, Poppler, and Ghostscript paths from Config
+pytesseract.pytesseract.tesseract_cmd = Config.TESSERACT_CMD
+poppler_path = Config.POPPLER_PATH # Used directly by pdf2image
+ghostscript_exec = Config.GHOSTSCRIPT_EXEC # Used directly by subprocess
 
 # New functions from user's provided code
 def check_tesseract_installed():
@@ -48,19 +41,22 @@ def check_tesseract_installed():
         return False
 
 def check_poppler_installed():
-    """Checks if Poppler (pdftoppm) is installed and accessible."""
-    try:
-        subprocess.run(['pdftoppm', '-v'], check=True, capture_output=True, text=True)
-        logger.info("Poppler (pdftoppm) is installed and accessible.")
+    """Checks if Poppler (pdftoppm) is installed and accessible via the configured path."""
+    poppler_pdftoppm_path = os.path.join(Config.POPPLER_PATH, 'pdftoppm.exe') if sys.platform == "win32" else os.path.join(Config.POPPLER_PATH, 'pdftoppm')
+    if os.path.exists(poppler_pdftoppm_path):
+        logger.info(f"Poppler (pdftoppm) found at {poppler_pdftoppm_path}.")
         return True
-    except FileNotFoundError:
-        logger.warning("Poppler (pdftoppm) is not found. Please install it and ensure its 'bin' directory is in your system's PATH.")
+    else:
+        logger.warning(f"Poppler (pdftoppm) not found at {poppler_pdftoppm_path}. Please install Poppler and ensure Config.POPPLER_PATH is correct.")
         return False
-    except subprocess.CalledProcessError as e:
-        logger.warning(f"Poppler (pdftoppm) command failed: {e}. Please check your Poppler installation.")
-        return False
-    except Exception as e:
-        logger.warning(f"Error checking Poppler installation: {e}")
+
+def check_ghostscript_installed():
+    """Checks if Ghostscript is installed and accessible via the configured path."""
+    if os.path.exists(Config.GHOSTSCRIPT_EXEC):
+        logger.info(f"Ghostscript found at {Config.GHOSTSCRIPT_EXEC}.")
+        return True
+    else:
+        logger.warning(f"Ghostscript executable not found at {Config.GHOSTSCRIPT_EXEC}. Please install Ghostscript and ensure Config.GHOSTSCRIPT_EXEC is correct.")
         return False
 
 def normalize_text(text):
@@ -68,6 +64,60 @@ def normalize_text(text):
     normalized_text = unicodedata.normalize('NFD', text)
     normalized_text = normalized_text.encode('ascii', 'ignore').decode('utf-8').lower()
     return normalized_text
+
+def compress_pdf(input_pdf_path, output_pdf_path, quality='screen'):
+    """
+    Compresses a PDF file using Ghostscript.
+    Quality options: 'screen', 'ebook', 'printer', 'prepress', 'default'.
+    """
+    logger.info(f"Attempting to compress PDF: {input_pdf_path} to {output_pdf_path} with quality: {quality}")
+    
+    gs_command = [
+        ghostscript_exec,
+        '-sDEVICE=pdfwrite',
+        '-dCompatibilityLevel=1.4',
+        '-dNOPAUSE',
+        '-dBATCH',
+        '-q',
+        # Explicit image compression and downsampling for aggressive reduction
+        '-dColorImageResolution=50', # Lowered resolution for more aggressive compression
+        '-dGrayImageResolution=50',  # Lowered resolution for more aggressive compression
+        '-dMonoImageResolution=50',  # Lowered resolution for more aggressive compression
+        '-dColorImageDownsampleType=/Bicubic',
+        '-dGrayImageDownsampleType=/Bicubic',
+        '-dMonoImageDownsampleType=/Bicubic',
+        '-dColorImageCompression=/DCTEncode', # JPEG compression for color images
+        '-dGrayImageCompression=/DCTEncode', # JPEG compression for grayscale images
+        '-dMonoImageCompression=/CCITTFaxEncode', # CCITTFax compression for monochrome images (good for scanned text)
+        '-dEmbedAllFonts=false', # Do not embed all fonts
+        '-dSubsetFonts=true', # Subset fonts if embedded (only embed used characters)
+        '-dDetectDuplicateImages=true', # Detect and reuse duplicate images
+        '-dCompressPages=true', # Compress page content streams
+        '-dFastWebView=true', # Optimize for web viewing (linearize PDF)
+        '-dEncodeColorImages=true', # Ensure images are re-encoded
+        '-dEncodeGrayImages=true',
+        '-dEncodeMonoImages=true',
+        '-dAutoFilterColorImages=true', # Auto-select best filter for color images
+        '-dAutoFilterGrayImages=true',
+        '-dAutoFilterMonoImages=true',
+        '-dJPEGQ=50', # Set JPEG quality for DCTEncode (0-100, lower is more compression)
+        f'-sOutputFile={output_pdf_path}',
+        input_pdf_path
+    ]
+
+    try:
+        subprocess.run(gs_command, check=True, capture_output=True, text=True)
+        logger.info(f"Successfully compressed PDF: {input_pdf_path} -> {output_pdf_path}")
+        return True
+    except FileNotFoundError:
+        logger.error(f"Ghostscript executable '{ghostscript_exec}' not found. Cannot compress PDF. Please install Ghostscript and ensure the path is correct or it's in your system's PATH.")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error compressing PDF {input_pdf_path} with Ghostscript: {e.stderr}", exc_info=True)
+        return False
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during PDF compression for {input_pdf_path}: {e}", exc_info=True)
+        return False
 
 def extract_text_from_pdf(pdf_path):
     """Extracts text from a PDF file using OCR if direct extraction fails."""
@@ -92,16 +142,21 @@ def extract_text_from_pdf(pdf_path):
     except Exception as e:
         logger.warning(f"Direct text extraction failed for {pdf_path}: {e}. Attempting OCR.")
     
-    try:
-        # Use pdf2image and pytesseract for OCR
-        images = convert_from_path(pdf_path, poppler_path=poppler_path) # Pass poppler_path explicitly
-        for i, image in enumerate(images):
-            logger.info(f"Performing OCR on page {i+1} of {pdf_path}")
-            page_text = pytesseract.image_to_string(image, lang='por')
-            text += page_text + "\n"
-        logger.info(f"Successfully extracted text from PDF using OCR: {pdf_path}")
-    except Exception as e:
-        logger.error(f"Error extracting text from PDF {pdf_path} using OCR: {e}. Make sure Tesseract and Poppler are installed and configured correctly.")
+    # --- OCR Logic controlled by feature flag ---
+    if Config.ENABLE_OCR:
+        try:
+            # Use pdf2image and pytesseract for OCR
+            images = convert_from_path(pdf_path, poppler_path=poppler_path) # Pass poppler_path explicitly
+            for i, image in enumerate(images):
+                logger.info(f"Performing OCR on page {i+1} of {pdf_path}")
+                page_text = pytesseract.image_to_string(image, lang='por')
+                text += page_text + "\n"
+            logger.info(f"Successfully extracted text from PDF using OCR: {pdf_path}")
+        except Exception as e:
+            logger.error(f"Error extracting text from PDF {pdf_path} using OCR: {e}. Make sure Tesseract and Poppler are installed and configured correctly.")
+    else:
+        logger.info(f"OCR skipped for {pdf_path} as feature flag is disabled.")
+    # --- End OCR Logic ---
     return text
 
 def extract_data_from_text(text):
@@ -191,9 +246,6 @@ def extract_data_from_text(text):
                     equipment_info["patrimonio"] = patrimonio
                 data["equipamentos"].append(equipment_info)
 
-            
-
-
     # Date - porra de regex no site funciona aqui não wtffff
     date_match = re.search(r"sao paulo,\s*(\d{1,2})\s+de\s+([a-zA-Zçãõéúíóáàêôâü]+)\s+de\s+(\d{4})\s*empregado", text, re.DOTALL | re.IGNORECASE)
     if date_match:
@@ -271,6 +323,36 @@ def process_file_task(file_id: int, file_path: str, current_retries: int, result
             processed_data = extract_text_from_pdf(new_file_path)
             if not processed_data.strip():
                 logger.warning(f"Worker {os.getpid()} - PDF extraction (direct or OCR) returned empty for file ID {file_id}.")
+            
+            # --- PDF Compression Logic ---
+            if Config.ENABLE_PDF_COMPRESSION and current_status != 'failed': # Only attempt compression if enabled and not already failed
+                original_pdf_in_processing = new_file_path # This is the path to the uncompressed PDF
+                compressed_pdf_filename = f"compressed_{filename}"
+                compressed_pdf_path = os.path.join(Config.PROCESSING_FOLDER, compressed_pdf_filename)
+
+                logger.info(f"Attempting to compress PDF for file ID {file_id}...")
+                if compress_pdf(original_pdf_in_processing, compressed_pdf_path):
+                    logger.info(f"PDF compressed successfully for file ID {file_id}. Original: {original_pdf_in_processing}, Compressed: {compressed_pdf_path}")
+                    # Update new_file_path to point to the compressed file
+                    new_file_path = compressed_pdf_path
+                    # Delete the original uncompressed PDF from the processing folder
+                    try:
+                        os.remove(original_pdf_in_processing)
+                        logger.info(f"Original uncompressed PDF removed from processing folder: {original_pdf_in_processing}")
+                    except Exception as e:
+                        logger.warning(f"Could not remove original uncompressed PDF {original_pdf_in_processing}: {e}")
+                else:
+                    logger.error(f"PDF compression failed for file ID {file_id}. File will be moved to FAILED_FOLDER.")
+                    current_status = 'failed'
+                    new_retries += 1
+                    processed_data += "\nWarning: PDF compression failed."
+                    # If compression fails, keep new_file_path as the original uncompressed file
+                    # so it can be moved to FAILED_FOLDER.
+                    new_file_path = original_pdf_in_processing
+            else:
+                if not Config.ENABLE_PDF_COMPRESSION:
+                    logger.info(f"PDF compression skipped for file ID {file_id} as feature flag is disabled.")
+            # --- End PDF Compression Logic ---
         else:
             processed_data = "Unsupported file type."
             current_status = 'failed'
