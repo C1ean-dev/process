@@ -7,9 +7,52 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.models import File
 from app.config import Config
 from app.workers.pdf_processing.extraction import normalize_text, extract_text_from_pdf, extract_data_from_text
+import boto3
+from botocore.exceptions import ClientError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def _get_r2_client():
+    """Initializes and returns a Boto3 S3 client for Cloudflare R2."""
+    if not all([Config.CLOUDFLARE_ACCOUNT_ID, Config.CLOUDFLARE_R2_ACCESS_KEY_ID,
+                Config.CLOUDFLARE_R2_SECRET_ACCESS_KEY, Config.CLOUDFLARE_R2_BUCKET_NAME,
+                Config.CLOUDFLARE_R2_ENDPOINT_URL]):
+        logger.error("Cloudflare R2 credentials or bucket name are not fully configured.")
+        return None
+    
+    try:
+        s3_client = boto3.client(
+            service_name='s3',
+            endpoint_url=Config.CLOUDFLARE_R2_ENDPOINT_URL,
+            aws_access_key_id=Config.CLOUDFLARE_R2_ACCESS_KEY_ID,
+            aws_secret_access_key=Config.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+            region_name='auto' # R2 does not use regions in the traditional S3 sense, 'auto' is recommended
+        )
+        logger.info("Cloudflare R2 client initialized successfully.")
+        return s3_client
+    except Exception as e:
+        logger.error(f"Error initializing R2 client: {e}", exc_info=True)
+        return None
+
+def _upload_file_to_r2(local_file_path: str, object_name: str) -> str | None:
+    """Uploads a file to Cloudflare R2 and returns its public URL."""
+    s3_client = _get_r2_client()
+    if not s3_client:
+        return None
+
+    bucket_name = Config.CLOUDFLARE_R2_BUCKET_NAME
+    try:
+        s3_client.upload_file(local_file_path, bucket_name, object_name)
+        object_url = f"{Config.CLOUDFLARE_R2_ENDPOINT_URL}/{bucket_name}/{object_name}"
+        logger.info(f"File {local_file_path} uploaded to R2 as {object_name}. URL: {object_url}")
+        return object_url
+    except ClientError as e:
+        logger.error(f"Failed to upload {local_file_path} to R2: {e}", exc_info=True)
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during R2 upload for {local_file_path}: {e}", exc_info=True)
+        return None
 
 def _get_db_session(db_uri: str) -> Session:
     """Helper to get a new SQLAlchemy session."""
@@ -143,16 +186,42 @@ def process_file_task(file_id: int, file_path: str, current_retries: int, result
     finally:
         session.close() # Ensure session is closed
 
-    # 4. Determine final destination and move file
-    final_destination_folder = Config.COMPLETED_FOLDER if current_status == 'completed' else Config.FAILED_FOLDER
-    try:
-        final_file_path = _move_file(new_file_path, final_destination_folder, filename)
-    except Exception as e:
-        logger.error(f"Error moving file to final destination {final_destination_folder}: {e}", exc_info=True)
-        processed_data += f"\nWarning: Could not move file to final folder: {e}"
-        current_status = 'failed' # Mark as failed if final move fails
-        new_retries += 1
-        final_file_path = new_file_path # Keep the processing path if move failed
+    # 4. Handle final file destination (R2 or FAILED_FOLDER)
+    final_file_path = new_file_path # Default to current path in case of R2 upload failure
+    
+    if current_status == 'completed':
+        # Upload to R2
+        r2_object_name = filename # Use filename as the object name in R2
+        r2_url = _upload_file_to_r2(new_file_path, r2_object_name)
+        
+        if r2_url:
+            final_file_path = r2_url # Store R2 URL in DB
+            logger.info(f"File {filename} successfully uploaded to R2. Local file will be deleted.")
+            # Delete local file from PROCESSING_FOLDER after successful R2 upload
+            try:
+                os.remove(new_file_path)
+                logger.info(f"Local file {new_file_path} removed after R2 upload.")
+            except Exception as e:
+                logger.warning(f"Could not remove local file {new_file_path} after R2 upload: {e}")
+        else:
+            logger.error(f"Failed to upload file {filename} to R2. Moving to FAILED_FOLDER.")
+            current_status = 'failed'
+            new_retries += 1
+            processed_data += "\nWarning: Failed to upload to Cloudflare R2."
+            # If R2 upload fails, move to FAILED_FOLDER
+            try:
+                final_file_path = _move_file(new_file_path, Config.FAILED_FOLDER, filename)
+            except Exception as e:
+                logger.error(f"Error moving file to FAILED_FOLDER after R2 upload failure: {e}", exc_info=True)
+                final_file_path = new_file_path # Keep processing path if move fails
+    else: # current_status is 'failed'
+        # Move to FAILED_FOLDER
+        try:
+            final_file_path = _move_file(new_file_path, Config.FAILED_FOLDER, filename)
+        except Exception as e:
+            logger.error(f"Error moving file to FAILED_FOLDER: {e}", exc_info=True)
+            processed_data += f"\nWarning: Could not move file to FAILED_FOLDER: {e}"
+            final_file_path = new_file_path # Keep processing path if move fails
 
     # 5. Update final status and data in DB
     session = _get_db_session(db_uri) # Re-open session for final update

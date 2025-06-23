@@ -120,28 +120,34 @@ def view_data():
     files = files_query.all()
     return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query)
 
+import boto3
+from botocore.exceptions import ClientError
+
 @files_bp.route('/download/<filename>')
 @login_required
 def download_file(filename):
-    # Ensure the file is in the COMPLETED_FOLDER and belongs to the current user (or is admin)
     file_record = File.query.filter_by(filename=filename).first()
     if not file_record:
         flash('File not found.', 'danger')
         return redirect(url_for('files.view_data'))
     
-    # Basic authorization: only owner or admin can download
     if file_record.user_id != current_user.id and not current_user.is_admin:
         flash('You are not authorized to download this file.', 'danger')
         return redirect(url_for('files.view_data'))
 
-    # Check if the file is actually in the completed folder
-    if file_record.status == 'completed' and os.path.exists(file_record.filepath):
+    if file_record.status == 'completed' and file_record.filepath.startswith('https://'):
+        # If filepath is an R2 URL, redirect directly
+        logger.info(f"Redirecting to R2 URL for download: {file_record.filepath}")
+        return redirect(file_record.filepath)
+    elif file_record.status == 'completed' and os.path.exists(file_record.filepath):
+        # Fallback for local files (e.g., if R2 upload failed or was disabled)
         # Ensure the filepath is within the COMPLETED_FOLDER for security
         if os.path.dirname(file_record.filepath) == current_app.config['COMPLETED_FOLDER']:
+            logger.info(f"Serving local file for download: {file_record.filepath}")
             return send_from_directory(current_app.config['COMPLETED_FOLDER'], filename, as_attachment=True)
         else:
             flash('File is not in the completed folder or path is incorrect.', 'danger')
-            logger.error(f"Attempt to download file {filename} with incorrect path: {file_record.filepath}")
+            logger.error(f"Attempt to download file {filename} with incorrect local path: {file_record.filepath}")
             return redirect(url_for('files.view_data'))
     else:
         flash('File is not yet completed or does not exist.', 'danger')
