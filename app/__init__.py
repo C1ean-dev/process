@@ -69,7 +69,7 @@ def create_app():
         # Import and register blueprints
         from app.auth import auth_bp
         from app.files import files_bp
-        from app.setup import setup_bp
+        from app.init_register import setup_bp
         from app.workers import workers_bp # Import the new workers blueprint
 
         app.register_blueprint(auth_bp)
