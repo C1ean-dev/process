@@ -16,6 +16,16 @@ import json # Import json for structured data serialization
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def from_json(value):
+    """Jinja2 filter to parse JSON strings."""
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value # Return original value if not valid JSON
+
+
 # Global queues and worker processes list
 task_queue = Queue() # For sending tasks to workers
 results_queue = Queue() # For receiving results from workers
@@ -32,6 +42,9 @@ def create_app():
 
     login_manager = LoginManager()
     login_manager.init_app(app)
+
+    # Register the custom Jinja2 filter
+    app.jinja_env.filters['from_json'] = from_json
     login_manager.login_view = 'auth.login' # Redirect to login page if not authenticated
 
     @login_manager.user_loader
@@ -69,7 +82,7 @@ def create_app():
         # Import and register blueprints
         from app.auth import auth_bp
         from app.files import files_bp
-        from app.setup import setup_bp
+        from app.init_register import setup_bp
         from app.workers import workers_bp # Import the new workers blueprint
 
         app.register_blueprint(auth_bp)

@@ -27,25 +27,52 @@
                 <thead class="thead-dark">
                     <tr>
                         <th>Original Filename</th>
-                        <th>Upload Date</th>
                         <th>Status</th>
-                        <th>Processed Data</th>
-                        <th>Uploaded By</th>
-                        <th>Actions</th> {# New column for actions #}
+                        <th>Nome</th>
+                        <th>Matrícula</th>
+                        <th>Equipamentos</th>
+                        <th>IMEI Números</th>
+                        <th>Patrimônio Números</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for file in files %}
                     <tr>
                         <td>{{ file.original_filename }}</td>
-                        <td>{{ file.upload_date.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                         <td>{{ file.status }}</td>
+                        <td>{{ file.nome if file.nome else 'N/A' }}</td>
+                        <td>{{ file.matricula if file.matricula else 'N/A' }}</td>
                         <td>
-                            <div style="max-height: 100px; overflow-y: auto; white-space: pre-wrap;">
-                                {{ file.processed_data if file.processed_data else 'N/A' }}
-                            </div>
+                            {% if file.equipamentos %}
+                                {% set equipments = file.equipamentos | from_json %}
+                                {% for eq in equipments %}
+                                    {{ eq.nome_equipamento }}<br>
+                                {% endfor %}
+                            {% else %}
+                                N/A
+                            {% endif %}
                         </td>
-                        <td>{{ file.user.username }}</td>
+                        <td>
+                            {% if file.imei_numbers %}
+                                {% set imei_list = file.imei_numbers | from_json %}
+                                {% for imei in imei_list %}
+                                    {{ imei }}<br>
+                                {% endfor %}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if file.patrimonio_numbers %}
+                                {% set patrimonio_list = file.patrimonio_numbers | from_json %}
+                                {% for pat in patrimonio_list %}
+                                    {{ pat }}<br>
+                                {% endfor %}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
                         <td>
                             {% if file.status == 'completed' %}
                                 <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-success btn-sm">Download</a>
@@ -56,7 +83,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center">No files found.</td>
+                        <td colspan="8" class="text-center">No files found.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

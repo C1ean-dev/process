@@ -101,9 +101,21 @@ def view_data():
     if query:
         search_pattern = f"%{query}%"
         files_query = files_query.filter(
-            File.processed_data.ilike(search_pattern)
+            or_(
+                File.original_filename.ilike(search_pattern),
+                File.nome.ilike(search_pattern),
+                File.matricula.ilike(search_pattern),
+                File.funcao.ilike(search_pattern),
+                File.empregador.ilike(search_pattern),
+                File.rg.ilike(search_pattern),
+                File.cpf.ilike(search_pattern),
+                File.equipamentos.ilike(search_pattern), # Search in JSON string
+                File.imei_numbers.ilike(search_pattern), # Search in JSON string
+                File.patrimonio_numbers.ilike(search_pattern), # Search in JSON string
+                File.processed_data.ilike(search_pattern) # Keep searching in raw processed data
+            )
         )
-        flash(f"Showing results for '{query}' in processed data", 'info')
+        flash(f"Showing results for '{query}'", 'info')
     
     files = files_query.all()
     return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query)
