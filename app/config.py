@@ -2,13 +2,10 @@ import os
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'a_very_secret_key_that_should_be_changed'
-    # Ensure the database URI uses an absolute path for consistency across processes
-    # The 'instance' folder is typically used by Flask for instance-specific files.
-    # We ensure it's created relative to the project root.
-    BASE_DIR = os.path.abspath(os.path.dirname(__file__)) # This gets 'app' directory
-    PROJECT_ROOT = os.path.join(BASE_DIR, os.pardir) # This gets 'projeto/process'
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__)) 
+    PROJECT_ROOT = os.path.join(BASE_DIR, os.pardir)
     INSTANCE_FOLDER = os.path.join(PROJECT_ROOT, 'instance')
-    os.makedirs(INSTANCE_FOLDER, exist_ok=True) # Ensure instance folder exists
+    os.makedirs(INSTANCE_FOLDER, exist_ok=True)
 
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(INSTANCE_FOLDER, "site.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -31,3 +28,11 @@ class Config:
     TESSERACT_CMD = os.environ.get('TESSERACT_CMD') or r'C:\Program Files\Tesseract-OCR\tesseract.exe'
     POPPLER_PATH = os.environ.get('POPPLER_PATH') or r'C:\poppler\Library\bin'
     GHOSTSCRIPT_EXEC = os.environ.get('GHOSTSCRIPT_EXEC') or r'C:\Program Files\gs\gs10.05.1\bin\gswin64c.exe'
+
+    # Cloudflare R2 (S3-compatible) Configuration
+    # These should ideally be set via environment variables in production
+    CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
+    CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID')
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')
+    CLOUDFLARE_R2_BUCKET_NAME = os.environ.get('CLOUDFLARE_R2_BUCKET_NAME')
+    CLOUDFLARE_R2_ENDPOINT_URL = os.environ.get('CLOUDFLARE_R2_ENDPOINT_URL')
