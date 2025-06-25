@@ -15,4 +15,4 @@ ENV FLASK_APP=app/__init__.py
 ENV FLASK_DEBUG=1
 ENV SQLALCHEMY_DATABASE_URI=sqlite:///site.db
 
-CMD ["flask", "run", "--host=0.0.0.0"]
+CMD ["flask", "run", "--host=0.0.0.00", "--port=8080"]
