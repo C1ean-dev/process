@@ -7,6 +7,8 @@ Este é um sistema web desenvolvido com Flask para upload, processamento (OCR) e
 *   **Upload de Arquivos**: Permite o upload de arquivos de imagem (PNG, JPG, JPEG, GIF) e PDF.
 *   **Processamento Assíncrono**: Utiliza workers para processar arquivos em segundo plano, evitando travamento da interface.
 *   **OCR (Optical Character Recognition)**: Extrai texto de imagens e PDFs usando Tesseract.
+*   **Compressão de PDF**: Otimiza o tamanho de arquivos PDF.
+*   **Extração de Texto de PDF**: Extrai texto de PDFs para processamento.
 *   **Gerenciamento de Status**: Acompanha o status de cada arquivo (pendente, processando, completo, falhou, reprocessando).
 *   **Reprocessamento Automático**: Tenta reprocessar tarefas que falham até 3 vezes.
 *   **Monitoramento de Pastas**: Um monitor de pasta verifica periodicamente a pasta de arquivos pendentes para garantir que todos os arquivos sejam processados, mesmo que não tenham sido adicionados via upload ou se o aplicativo foi reiniciado.
@@ -64,11 +66,27 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
         flask db upgrade
         ```
 
-5.  **Defina variáveis de ambiente (opcional, mas recomendado):**
+5.  **Defina variáveis de ambiente:**
     Crie um arquivo `.env` na raiz do projeto com:
     ```
     SECRET_KEY='sua_chave_secreta_aqui'
     DATABASE_URL='sqlite:///site.db' # Ou sua URL de banco de dados
+
+    # Configurações do Tesseract e Poppler (EX para Windows, ajuste conforme seu SO)
+    TESSERACT_CMD='C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+    POPPLER_PATH='C:\\poppler\\Library\\bin'
+    GHOSTSCRIPT_EXEC='C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe'
+
+    # Feature Flags
+    ENABLE_PDF_COMPRESSION='True' (Beta no momento ela está aumentando o tamanho do arquivo ainda não sei o pq)
+    ENABLE_OCR='True'
+
+    # Cloudflare R2 (S3-compatible) Configuration
+    CLOUDFLARE_ACCOUNT_ID='seu_account_id_r2'
+    CLOUDFLARE_R2_ACCESS_KEY_ID='sua_access_key_id_r2'
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY='sua_secret_access_key_r2'
+    CLOUDFLARE_R2_BUCKET_NAME='seu_bucket_name_r2'
+    CLOUDFLARE_R2_ENDPOINT_URL='seu_endpoint_url_r2'
     ```
 
 ## Como Executar
@@ -91,6 +109,19 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
 ## Contribuição
 
 Sinta-se à vontade para contribuir com este projeto.
+
+## Licença
+
+## Tecnologias Utilizadas
+
+*   **Flask**: Microframework web para Python.
+*   **SQLAlchemy**: ORM para interação com o banco de dados.
+*   **Celery**: Sistema de fila de tarefas distribuídas para processamento assíncrono.
+*   **Redis**: Broker de mensagens para Celery e cache.
+*   **Tesseract OCR**: Motor de OCR para extração de texto.
+*   **Pillow**: Biblioteca de processamento de imagens.
+*   **PyPDF2**: Biblioteca para manipulação de PDFs.
+*   **Cloudflare R2**: Armazenamento de objetos compatível com S3 para armazenamento de arquivos.
 
 ## Licença
 

@@ -1,6 +1,6 @@
 import pytest
 from flask import url_for
-from app.models import File # Updated import
+from ..app.models import File
 from tests.test_auth import login
 from unittest.mock import patch, MagicMock
 import os

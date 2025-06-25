@@ -1,7 +1,7 @@
 import pytest
 from flask import url_for
 from flask_login import current_user
-from app.models import User # Updated import
+from ..app.models import User
 
 def login(client, email, password):
     """Helper function to log in a user."""

@@ -1,7 +1,9 @@
 import os
+from dotenv import load_dotenv 
+load_dotenv()
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'a_very_secret_key_that_should_be_changed'
+    SECRET_KEY = os.environ.get('SECRET_KEY')
     BASE_DIR = os.path.abspath(os.path.dirname(__file__)) 
     PROJECT_ROOT = os.path.join(BASE_DIR, os.pardir)
     INSTANCE_FOLDER = os.path.join(PROJECT_ROOT, 'instance')
@@ -21,16 +23,15 @@ class Config:
     FOLDER_MONITOR_INTERVAL_SECONDS = 60 
 
     # Feature Flags
-    ENABLE_PDF_COMPRESSION = os.environ.get('ENABLE_PDF_COMPRESSION', 'True').lower() == 'false'
-    ENABLE_OCR = os.environ.get('ENABLE_OCR', 'True').lower() == 'true'
+    ENABLE_PDF_COMPRESSION = os.environ.get('ENABLE_PDF_COMPRESSION')
+    ENABLE_OCR = os.environ.get('ENABLE_OCR')
 
     # External tool paths (adjust as needed for your environment)
-    TESSERACT_CMD = os.environ.get('TESSERACT_CMD') or r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-    POPPLER_PATH = os.environ.get('POPPLER_PATH') or r'C:\poppler\Library\bin'
-    GHOSTSCRIPT_EXEC = os.environ.get('GHOSTSCRIPT_EXEC') or r'C:\Program Files\gs\gs10.05.1\bin\gswin64c.exe'
+    TESSERACT_CMD = os.environ.get('TESSERACT_CMD')
+    POPPLER_PATH = os.environ.get('POPPLER_PATH')
+    GHOSTSCRIPT_EXEC = os.environ.get('GHOSTSCRIPT_EXEC')
 
     # Cloudflare R2 (S3-compatible) Configuration
-    # These should ideally be set via environment variables in production
     CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
     CLOUDFLARE_R2_ACCESS_KEY_ID = os.environ.get('CLOUDFLARE_R2_ACCESS_KEY_ID')
     CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')

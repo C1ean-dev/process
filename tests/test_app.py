@@ -1,5 +1,5 @@
 import pytest
-from app.models import User # Updated import
+from ..app.models import User
 
 def test_initial_redirect_no_admin(client, session):
     """Test that the app redirects to setup if no admin exists."""

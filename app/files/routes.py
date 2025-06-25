@@ -95,8 +95,8 @@ def view_data():
         # Redirect to GET request with query parameter to make URL shareable
         return redirect(url_for('files.view_data', query=query)) # Updated url_for
 
-    # Filter by 'completed' status by default
-    files_query = File.query.filter_by(status='completed').order_by(File.upload_date.desc())
+    # Filter by 'completed' or 'failed' status by default
+    files_query = File.query.filter(File.status.in_(['completed', 'failed'])).order_by(File.upload_date.desc())
 
     if query:
         search_pattern = f"%{query}%"
@@ -109,10 +109,10 @@ def view_data():
                 File.empregador.ilike(search_pattern),
                 File.rg.ilike(search_pattern),
                 File.cpf.ilike(search_pattern),
-                File.equipamentos.ilike(search_pattern), # Search in JSON string
-                File.imei_numbers.ilike(search_pattern), # Search in JSON string
-                File.patrimonio_numbers.ilike(search_pattern), # Search in JSON string
-                File.processed_data.ilike(search_pattern) # Keep searching in raw processed data
+                File.equipamentos.ilike(search_pattern),
+                File.imei_numbers.ilike(search_pattern), 
+                File.patrimonio_numbers.ilike(search_pattern),
+                File.processed_data.ilike(search_pattern)
             )
         )
         flash(f"Showing results for '{query}'", 'info')
@@ -135,22 +135,31 @@ def download_file(filename):
         flash('You are not authorized to download this file.', 'danger')
         return redirect(url_for('files.view_data'))
 
-    if file_record.status == 'completed' and file_record.filepath.startswith('https://'):
-        # If filepath is an R2 URL, redirect directly
-        logger.info(f"Redirecting to R2 URL for download: {file_record.filepath}")
-        return redirect(file_record.filepath)
-    elif file_record.status == 'completed' and os.path.exists(file_record.filepath):
-        # Fallback for local files (e.g., if R2 upload failed or was disabled)
-        # Ensure the filepath is within the COMPLETED_FOLDER for security
-        if os.path.dirname(file_record.filepath) == current_app.config['COMPLETED_FOLDER']:
-            logger.info(f"Serving local file for download: {file_record.filepath}")
-            return send_from_directory(current_app.config['COMPLETED_FOLDER'], filename, as_attachment=True)
-        else:
-            flash('File is not in the completed folder or path is incorrect.', 'danger')
-            logger.error(f"Attempt to download file {filename} with incorrect local path: {file_record.filepath}")
+    if file_record.status == 'completed':
+        s3_client = boto3.client(
+            service_name='s3',
+            endpoint_url=current_app.config['CLOUDFLARE_R2_ENDPOINT_URL'],
+            aws_access_key_id=current_app.config['CLOUDFLARE_R2_ACCESS_KEY_ID'],
+            aws_secret_access_key=current_app.config['CLOUDFLARE_R2_SECRET_ACCESS_KEY'],
+            region_name='auto'
+        )
+        bucket_name = current_app.config['CLOUDFLARE_R2_BUCKET_NAME']
+        object_name = file_record.filename
+
+        try:
+            object_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket_name, 'Key': object_name},
+                ExpiresIn=60
+            )
+            logger.info(f"Generated presigned URL for download: {object_url}")
+            return redirect(object_url)
+        except ClientError as e:
+            flash(f"Error generating presigned URL: {e}", 'danger')
+            logger.error(f"Error generating presigned URL: {e}", exc_info=True)
             return redirect(url_for('files.view_data'))
     else:
-        flash('File is not yet completed or does not exist.', 'danger')
+        flash('File is not yet completed.', 'danger')
         return redirect(url_for('files.view_data'))
 
 # Removed worker_status route as it will be in app/workers/routes.py

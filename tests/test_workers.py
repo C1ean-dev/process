@@ -1,8 +1,8 @@
 import pytest
 import os
 from unittest.mock import patch, MagicMock
-from app.workers.tasks import process_file_task, worker_main # Updated import
-from app.models import File # Updated import
+from ..app.workers.tasks import process_file_task, worker_main
+from ..app.models import File
 from multiprocessing import Queue
 
 @pytest.fixture

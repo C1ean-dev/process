@@ -1,8 +1,10 @@
 import pytest
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app
-from app.models import db, User, File # Updated import
-from app.config import Config # Updated import
+from app.models import db, User, File
+from app.config import Config
 
 # Use an in-memory SQLite database for testing
 class TestConfig(Config):

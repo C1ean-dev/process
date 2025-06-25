@@ -44,9 +44,18 @@ def _upload_file_to_r2(local_file_path: str, object_name: str) -> str | None:
     bucket_name = Config.CLOUDFLARE_R2_BUCKET_NAME
     try:
         s3_client.upload_file(local_file_path, bucket_name, object_name)
-        object_url = f"{Config.CLOUDFLARE_R2_ENDPOINT_URL}/{bucket_name}/{object_name}"
-        logger.info(f"File {local_file_path} uploaded to R2 as {object_name}. URL: {object_url}")
-        return object_url
+        # Generate a presigned URL that is valid for 60 seconds
+        try:
+            object_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket_name, 'Key': object_name},
+                ExpiresIn=60
+            )
+            logger.info(f"File {local_file_path} uploaded to R2 as {object_name}. Presigned URL: {object_url}")
+            return object_url
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned URL: {e}")
+            return None
     except ClientError as e:
         logger.error(f"Failed to upload {local_file_path} to R2: {e}", exc_info=True)
         return None
@@ -72,6 +81,9 @@ def _update_file_status_in_db(session: Session, file_id: int, status: str, retri
             if processed_data is not None:
                 file_record.processed_data = processed_data.strip()
             if structured_data is not None:
+                logger.info(f"Structured data for file ID {file_id}: {structured_data}")
+                file_record.nome = structured_data.get('nome')
+                file_record.matricula = structured_data.get('matricula')
                 file_record.structured_data = structured_data
             session.commit()
             logger.info(f"File ID {file_id} status updated to '{status}' in DB.")
