@@ -1,16 +1,16 @@
 import os
 import uuid
 import logging
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, send_from_directory # Import send_from_directory
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, send_from_directory
 from flask_login import login_required, current_user
-from app.files.forms import FileUploadForm, SearchForm # Import forms from new path
+from app.files.forms import FileUploadForm, SearchForm
 from app.models import db, File
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_ # Import or_ for OR conditions in queries
+from sqlalchemy import or_
 
 logger = logging.getLogger(__name__)
 
-files_bp = Blueprint('files', __name__) # Renamed blueprint to 'files'
+files_bp = Blueprint('files', __name__)
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -26,7 +26,7 @@ def home():
 def upload_file():
     form = FileUploadForm()
     if request.method == 'POST':
-        uploaded_files = request.files.getlist('file') # Get all files from the 'file' input
+        uploaded_files = request.files.getlist('file')
         
         if not uploaded_files or all(f.filename == '' for f in uploaded_files):
             flash('No selected file(s)', 'danger')
@@ -88,37 +88,65 @@ def upload_file():
 @login_required
 def view_data():
     search_form = SearchForm()
-    query = request.args.get('query', '') # Get query from URL parameter for GET requests
-    
+    query = request.args.get('query', '')
+    filter_field = request.args.get('filter', 'nome')
+
     if search_form.validate_on_submit():
         query = search_form.query.data
-        # Redirect to GET request with query parameter to make URL shareable
-        return redirect(url_for('files.view_data', query=query)) # Updated url_for
+        filter_field = search_form.filter.data
+        return redirect(url_for('files.view_data', query=query, filter=filter_field))
 
-    # Filter by 'completed' or 'failed' status by default
     files_query = File.query.filter(File.status.in_(['completed', 'failed'])).order_by(File.upload_date.desc())
 
     if query:
         search_pattern = f"%{query}%"
-        files_query = files_query.filter(
-            or_(
-                File.original_filename.ilike(search_pattern),
-                File.nome.ilike(search_pattern),
-                File.matricula.ilike(search_pattern),
-                File.funcao.ilike(search_pattern),
-                File.empregador.ilike(search_pattern),
-                File.rg.ilike(search_pattern),
-                File.cpf.ilike(search_pattern),
-                File.equipamentos.ilike(search_pattern),
-                File.imei_numbers.ilike(search_pattern), 
-                File.patrimonio_numbers.ilike(search_pattern),
-                File.processed_data.ilike(search_pattern)
-            )
-        )
-        flash(f"Showing results for '{query}'", 'info')
-    
+        if filter_field == 'equipamentos':
+            files_query = files_query.filter(File.equipamentos.ilike(search_pattern))
+        elif filter_field == 'imei_numbers':
+            files_query = files_query.filter(File.imei_numbers.ilike(search_pattern))
+        elif filter_field == 'patrimonio_numbers':
+            files_query = files_query.filter(File.patrimonio_numbers.ilike(search_pattern))
+        elif filter_field == 'processed_data':
+            files_query = files_query.filter(File.processed_data.ilike(search_pattern))
+        elif filter_field == 'matricula':
+            files_query = files_query.filter(File.matricula.ilike(search_pattern))
+        elif filter_field == 'funcao':
+            files_query = files_query.filter(File.funcao.ilike(search_pattern))
+        elif filter_field == 'empregador':
+            files_query = files_query.filter(File.empregador.ilike(search_pattern))
+        elif filter_field == 'rg':
+            files_query = files_query.filter(File.rg.ilike(search_pattern))
+        elif filter_field == 'cpf':
+            files_query = files_query.filter(File.cpf.ilike(search_pattern))
+        else:
+            files_query = files_query.filter(File.nome.ilike(search_pattern))
+        
+        flash(f"Showing results for '{query}' in '{filter_field}'", 'info')
+    else:
+        # If no query, filter out results where the selected field is not null or empty
+        if filter_field == 'equipamentos':
+            files_query = files_query.filter(File.equipamentos != None, File.equipamentos != '', File.equipamentos != '[]')
+        elif filter_field == 'imei_numbers':
+            files_query = files_query.filter(File.imei_numbers != None, File.imei_numbers != '', File.imei_numbers != '[]')
+        elif filter_field == 'patrimonio_numbers':
+            files_query = files_query.filter(File.patrimonio_numbers != None, File.patrimonio_numbers != '', File.patrimonio_numbers != '[]')
+        elif filter_field == 'processed_data':
+            files_query = files_query.filter(File.processed_data != None, File.processed_data != '')
+        elif filter_field == 'matricula':
+            files_query = files_query.filter(File.matricula != None, File.matricula != '', File.matricula != 'N/A')
+        elif filter_field == 'funcao':
+            files_query = files_query.filter(File.funcao != None, File.funcao != '')
+        elif filter_field == 'empregador':
+            files_query = files_query.filter(File.empregador != None, File.empregador != '')
+        elif filter_field == 'rg':
+            files_query = files_query.filter(File.rg != None, File.rg != '')
+        elif filter_field == 'cpf':
+            files_query = files_query.filter(File.cpf != None, File.cpf != '')
+        else: # Default to 'nome'
+            files_query = files_query.filter(File.nome != None, File.nome != '', File.nome != 'N/A')
+
     files = files_query.all()
-    return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query)
+    return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field)
 
 import boto3
 from botocore.exceptions import ClientError

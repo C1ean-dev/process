@@ -192,6 +192,9 @@ def start_workers(app):
                                 logger.error(f"Error committing file status update for {file_id} to final status: {commit_e}", exc_info=True)
                     else:
                         logger.warning(f"Main app could not find file {file_id} to update status.")
+                except (ValueError, EOFError) as e:
+                    logger.error(f"Error in results processing thread during shutdown: {e}", exc_info=True)
+                    break # Exit loop to allow thread to terminate
                 except Exception as e:
                     logger.error(f"Error in results processing thread: {e}", exc_info=True)
 
@@ -278,7 +281,7 @@ def shutdown_workers(app): # Accept app as argument
         task_queue.put((None, None, None)) # Send sentinel value to stop each worker (now expects 3 args)
     
     # Send sentinel to results processing thread
-    results_queue.put((None, None, None, None, None)) # Now expects 5 args
+    results_queue.put((None, None, None, None, None, None)) # Now expects 6 args
 
     # Signal folder monitor to stop
     folder_monitor_stop_event.set()

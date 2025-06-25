@@ -15,6 +15,10 @@
                             {{ search_form.query.label(class="sr-only") }}
                             {{ search_form.query(class="form-control", placeholder="Search by filename or content", value=current_query) }}
                         </div>
+                        <div class="form-group mr-2">
+                            {{ search_form.filter.label(class="sr-only") }}
+                            {{ search_form.filter(class="form-control") }}
+                        </div>
                         {{ search_form.submit(class="btn btn-outline-primary") }}
                     </form>
                     {% if current_query %}
@@ -41,8 +45,8 @@
                     <tr>
                         <td>{{ file.original_filename }}</td>
                         <td>{{ file.status }}</td>
-                        <td>{{ file.nome if file.nome else 'N/A' }}</td>
-                        <td>{{ file.matricula if file.matricula else 'N/A' }}</td>
+                        <td>{{ file.nome if file.nome else '' }}</td>
+                        <td>{{ file.matricula if file.matricula else '' }}</td>
                         <td>
                             {% if file.equipamentos %}
                                 {% set equipments = file.equipamentos | from_json %}

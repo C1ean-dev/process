@@ -259,6 +259,9 @@ def worker_main(task_queue: Queue, results_queue: Queue, db_uri: str):
                 break
             logger.info(f"Worker {os.getpid()} received task: File ID {file_id}, Path: {file_path}, Retries: {current_retries}")
             process_file_task(file_id, file_path, current_retries, results_queue, db_uri)
+        except KeyboardInterrupt:
+            logger.info(f"Worker {os.getpid()} received KeyboardInterrupt. Exiting gracefully.")
+            break
         except Exception as e:
             logger.error(f"Worker {os.getpid()} - Error in worker main loop: {e}", exc_info=True)
             session = _get_db_session(db_uri)
