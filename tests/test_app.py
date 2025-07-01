@@ -1,5 +1,6 @@
 import pytest
-from ..app.models import User
+from app.models import User
+from urllib.parse import urlparse
 
 def test_initial_redirect_no_admin(client, session):
     """Test that the app redirects to setup if no admin exists."""
@@ -7,11 +8,17 @@ def test_initial_redirect_no_admin(client, session):
     assert response.status_code == 302
     assert '/setup' in response.headers['Location']
 
-def test_initial_redirect_with_admin(client, session, admin_user):
+def test_initial_redirect_with_admin(client, session):
     """Test that the app redirects to login if an admin exists."""
-    response = client.get('/')
+    # Create an admin user for this test scenario
+    admin_user_instance = User(username='testadmin', email='testadmin@example.com', is_admin=True)
+    admin_user_instance.set_password('adminpassword')
+    session.add(admin_user_instance)
+    session.commit()
+
+    response = client.get('/', follow_redirects=False)
     assert response.status_code == 302
-    assert '/login' in response.headers['Location']
+    assert urlparse(response.headers['Location']).path == urlparse('/auth/login').path
 
 def test_setup_admin_get(client, session):
     """Test GET request to setup admin page."""

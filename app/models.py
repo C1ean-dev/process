@@ -44,6 +44,7 @@ class File(db.Model):
     filepath = db.Column(db.String(512), nullable=False)
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(50), default='pending') # pending, processing, completed, failed
+    checksum = db.Column(db.String(256), nullable=True) # Add checksum column
     retries = db.Column(db.Integer, default=0) # New column for retry count
     processed_data = db.Column(db.Text) # Store OCR or other processed data (raw text)
     nome = db.Column(db.String(255), nullable=True)

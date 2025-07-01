@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    NUM_WORKERS = '12'
     SECRET_KEY = os.environ.get('SECRET_KEY')
     BASE_DIR = os.path.abspath(os.path.dirname(__file__)) 
     PROJECT_ROOT = os.path.join(BASE_DIR, os.pardir)
@@ -12,10 +13,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(INSTANCE_FOLDER, "site.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-    PENDING_FOLDER = os.path.join(os.getcwd(), 'aguardando_processo') 
-    PROCESSING_FOLDER = os.path.join(os.getcwd(), 'processando') 
-    COMPLETED_FOLDER = os.path.join(os.getcwd(), 'completos') 
-    FAILED_FOLDER = os.path.join(os.getcwd(), 'falhas') 
+     
 
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
     MAX_CONTENT_LENGTH = 1024 * 1024 * 1024 
@@ -23,13 +21,13 @@ class Config:
     FOLDER_MONITOR_INTERVAL_SECONDS = 60 
 
     # Feature Flags
-    ENABLE_PDF_COMPRESSION = os.environ.get('ENABLE_PDF_COMPRESSION')
-    ENABLE_OCR = os.environ.get('ENABLE_OCR')
+    ENABLE_PDF_COMPRESSION = 'False'
+    ENABLE_OCR = 'True'
 
     # External tool paths (adjust as needed for your environment)
-    TESSERACT_CMD = os.environ.get('TESSERACT_CMD')
-    POPPLER_PATH = os.environ.get('POPPLER_PATH')
-    GHOSTSCRIPT_EXEC = os.environ.get('GHOSTSCRIPT_EXEC')
+    TESSERACT_CMD = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
+    POPPLER_PATH = 'C:\\poppler\\Library\\bin'
+    GHOSTSCRIPT_EXEC = 'C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe'
 
     # Cloudflare R2 (S3-compatible) Configuration
     CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')

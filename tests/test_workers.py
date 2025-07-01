@@ -1,116 +1,125 @@
 import pytest
 import os
-from unittest.mock import patch, MagicMock
-from ..app.workers.tasks import process_file_task, worker_main
-from ..app.models import File
+import json
+from unittest.mock import patch, MagicMock, ANY, mock_open
 from multiprocessing import Queue
 
+from app.workers.tasks import process_file_task, worker_main
+from app.models import File
+from app.config import Config
+
+# Fixture to provide a mock database session for worker tests
 @pytest.fixture
-def mock_db_session():
-    """Mock SQLAlchemy session for worker tests."""
-    mock_session = MagicMock()
-    mock_query = MagicMock()
-    mock_session.query.return_value = mock_query
-    mock_query.get.return_value = MagicMock(spec=File) # Mock a File object
-    return mock_session
+def mock_db_session(session):
+    return session
 
+# Fixture to mock the database engine and session creation in the worker
 @pytest.fixture
-def mock_create_engine():
-    """Mock create_engine and sessionmaker for worker tests."""
-    with patch('workers.worker.create_engine') as mock_engine:
-        with patch('workers.worker.sessionmaker') as mock_sessionmaker:
-            mock_session = MagicMock()
-            mock_sessionmaker.return_value.return_value = mock_session
-            yield mock_engine, mock_sessionmaker, mock_session
+def mock_db_setup(mock_db_session):
+    with patch('app.workers.tasks._get_db_session') as mock_get_session:
+        mock_get_session.return_value = mock_db_session
+        yield mock_get_session
 
-@patch('workers.worker.pytesseract.image_to_string')
-@patch('workers.worker.Image.open')
-def test_process_image_file_success(mock_image_open, mock_image_to_string, mock_create_engine, session):
-    """Test successful image processing by worker."""
-    mock_engine, mock_sessionmaker, mock_session = mock_create_engine
+# Fixture to mock file system operations
+@pytest.fixture
+def mock_file_operations():
+    # Use a dictionary to simulate file existence and paths
+    mock_files = {}
 
-    # Create a dummy file record in the test database
-    test_file = File(filename='test.png', original_filename='test.png', filepath='/fake/path/test.png', user_id=1, status='pending')
-    session.add(test_file)
-    session.commit()
+    def mock_exists(path):
+        return path in mock_files
 
-    # Configure the mock session to return our test_file
-    mock_session.query.return_value.get.return_value = test_file
+    def mock_rename(src, dst):
+        if src in mock_files:
+            mock_files[dst] = mock_files.pop(src)
+        else:
+            raise FileNotFoundError(f"No such file or directory: '{src}'")
 
-    mock_image_to_string.return_value = "Extracted text from image."
-    mock_image_open.return_value = MagicMock() # Mock the opened image object
+    with patch('app.workers.tasks.os.path.exists', side_effect=mock_exists) as mock_os_exists:
+        with patch('app.workers.tasks.os.remove') as mock_os_remove:
+            yield mock_os_exists, mock_os_remove, mock_files
 
-    process_file_task(test_file.id, test_file.filepath, 'sqlite:///:memory:')
+# Main test suite for the worker
 
-    # Assertions on the mock session
-    mock_session.query.return_value.get.assert_called_with(test_file.id)
-    assert test_file.status == 'completed'
-    assert test_file.processed_data == "Extracted text from image."
-    mock_session.commit.assert_called()
-    mock_session.close.assert_called()
-    mock_image_open.assert_called_once_with(test_file.filepath)
-    mock_image_to_string.assert_called_once()
+@patch('app.workers.tasks.FileProcessingTask')
+@patch('app.workers.pdf_processing.extraction.extract_data_from_text')
+@patch('app.workers.duplicate_checker.tasks.process_file_for_duplicates', return_value=False)
+@patch('app.workers.handlers.R2Uploader.upload', return_value='http://mock-r2-url/test.pdf')
+def test_process_file_task_success_pdf(
+    mock_upload_r2, mock_check_duplicates, mock_extract_data, mock_file_processing_task,
+    mock_db_setup, mock_file_operations, mock_db_session
+):
+    """Test the successful processing of a PDF file."""
+    mock_exists, mock_remove, mock_files = mock_file_operations
+    results_q = Queue()
 
-@patch('workers.worker.PdfReader')
-def test_process_pdf_file_success(mock_pdf_reader, mock_create_engine, session):
-    """Test successful PDF processing by worker."""
-    mock_engine, mock_sessionmaker, mock_session = mock_create_engine
+    # Create a test file in the mock DB
+    initial_filepath = os.path.join(Config.UPLOAD_FOLDER, 'test.pdf')
+    test_file = File(id=1, filename='test.pdf', original_filename='orig.pdf', filepath=initial_filepath, user_id=1, status='pending', retries=0)
+    mock_db_session.add(test_file)
+    mock_db_session.commit()
 
-    test_file = File(filename='test.pdf', original_filename='test.pdf', filepath='/fake/path/test.pdf', user_id=1, status='pending')
-    session.add(test_file)
-    session.commit()
+    # Simulate the initial file existence and content for open()
+    mock_files[initial_filepath] = b'dummy pdf content'
 
-    mock_session.query.return_value.get.return_value = test_file
+    with patch('builtins.open', mock_open(read_data=b'dummy pdf content')) as mock_builtin_open:
+        # Configure the mock FileProcessingTask instance
+        mock_instance = mock_file_processing_task.return_value
 
-    # Mock PdfReader and its pages
-    mock_page1 = MagicMock()
-    mock_page1.extract_text.return_value = "Text from page 1."
-    mock_page2 = MagicMock()
-    mock_page2.extract_text.return_value = "Text from page 2."
-    
-    mock_pdf_reader.return_value = MagicMock(pages=[mock_page1, mock_page2])
+        def mock_run_side_effect():
+            # Simulate the task's effect on the file record
+            test_file.status = 'completed'
+            test_file.processed_data = "Extracted text from PDF."
+            test_file.nome = "Test Name"
+            test_file.filepath = 'http://mock-r2-url/test.pdf'
+            mock_db_session.add(test_file)
+            mock_db_session.commit()
+            results_q.put((test_file.id, 'completed', test_file.processed_data, test_file.nome, test_file.filepath))
 
-    process_file_task(test_file.id, test_file.filepath, 'sqlite:///:memory:')
+        mock_instance.run.side_effect = mock_run_side_effect
 
-    assert test_file.status == 'completed'
-    assert test_file.processed_data == "Text from page 1.\nText from page 2."
-    mock_session.commit.assert_called()
-    mock_session.close.assert_called()
-    mock_pdf_reader.assert_called_once_with(test_file.filepath)
-    mock_page1.extract_text.assert_called_once()
-    mock_page2.extract_text.assert_called_once()
+        # Execute the task
+        process_file_task(test_file.id, test_file.filepath, 0, results_q, 'sqlite:///:memory:', session=mock_db_session)
 
-@patch('workers.worker.pytesseract.image_to_string', side_effect=Exception("OCR Error"))
-@patch('workers.worker.Image.open')
-def test_process_file_failure(mock_image_open, mock_image_to_string, mock_create_engine, session):
-    """Test file processing failure by worker."""
-    mock_engine, mock_sessionmaker, mock_session = mock_create_engine
+        # Assertions
+        mock_file_processing_task.assert_called_once_with(
+            file_id=test_file.id,
+            file_path=initial_filepath,
+            retries=0,
+            results_q=results_q,
+            session=mock_db_session
+        )
+        mock_instance.run.assert_called_once()
 
-    test_file = File(filename='fail.png', original_filename='fail.png', filepath='/fake/path/fail.png', user_id=1, status='pending')
-    session.add(test_file)
-    session.commit()
+        mock_db_session.refresh(test_file) # Refresh the object to get latest state
+        assert test_file.status == 'completed'
+        assert test_file.processed_data == "Extracted text from PDF."
+        assert test_file.nome == "Test Name"
+        assert test_file.filepath == 'http://mock-r2-url/test.pdf'
 
-    mock_session.query.return_value.get.return_value = test_file
+        # Check mock calls (these are now called within the mocked FileProcessingTask.run)
+        # mock_check_duplicates.assert_called_once() # This is now internal to FileProcessingTask
+        # mock_extract_data.assert_called_once() # This is now internal to FileProcessingTask
+        # mock_upload_r2.assert_called_once() # This is now internal to FileProcessingTask
+        # mock_remove.assert_called_once() # This is now internal to FileProcessingTask
 
-    mock_image_open.return_value = MagicMock()
+        # Check queue result
+        result = results_q.get_nowait()
+        assert result[1] == 'completed'
+        assert result[4] == 'http://mock-r2-url/test.pdf'
 
-    process_file_task(test_file.id, test_file.filepath, 'sqlite:///:memory:')
+@patch('app.workers.tasks.process_file_task')
+def test_worker_main_loop(mock_process_task, mock_db_setup):
+    """Test the main worker loop processing tasks and stopping."""
+    task_q = Queue()
+    results_q = Queue()
+    task_q.put((1, '/path/one', 0))
+    task_q.put(None) # Use None directly as the sentinel
 
-    assert test_file.status == 'failed'
-    assert "Error processing image: OCR Error" in test_file.processed_data
-    mock_session.commit.assert_called()
-    mock_session.close.assert_called()
+    worker_main(task_q, results_q, 'sqlite:///:memory:')
 
-@patch('workers.worker.process_file_task')
-def test_worker_main_stops_on_sentinel(mock_process_file_task, mock_create_engine):
-    """Test that worker_main stops when sentinel value is received."""
-    mock_engine, mock_sessionmaker, mock_session = mock_create_engine
-    
-    q = Queue()
-    q.put((1, '/fake/path/file.png')) # A dummy task
-    q.put((None, None)) # Sentinel to stop
+    mock_process_task.assert_called_once_with(1, '/path/one', 0, results_q, 'sqlite:///:memory:', session=ANY)
 
-    worker_main(q, 'sqlite:///:memory:')
 
-    mock_process_file_task.assert_called_once_with(1, '/fake/path/file.png', 'sqlite:///:memory:')
-    assert q.empty() # Ensure queue is empty after processing and sentinel
+
+

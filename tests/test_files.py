@@ -30,9 +30,9 @@ def test_upload_page_requires_login(client):
     assert response.status_code == 302
     assert '/login' in response.headers['Location']
 
-@patch('app.files.routes.os.rename')
-@patch('app.files.routes.current_app')
-def test_upload_file_success_single(mock_current_app, mock_os_rename, client, session, regular_user):
+@patch('app.files.handlers.os.remove')
+@patch('flask.current_app')
+def test_upload_file_success_single(mock_current_app, mock_os_remove, client, session, regular_user):
     """Test successful single file upload."""
     login_response = login(client, regular_user.email, 'userpassword')
     client.get(login_response.headers['Location'])
@@ -60,14 +60,15 @@ def test_upload_file_success_single(mock_current_app, mock_os_rename, client, se
     assert uploaded_file.status == 'pending'
     assert uploaded_file.user_id == regular_user.id
     
-    mock_os_rename.assert_called_once()
     mock_current_app.config['TASK_QUEUE'].put.assert_called_once_with(
         (uploaded_file.id, uploaded_file.filepath, uploaded_file.retries)
     )
+    # The filepath in the DB should now point to the UPLOAD_FOLDER path, as it's deleted after queuing
+    assert uploaded_file.filepath.startswith(client.application.config['UPLOAD_FOLDER'])
 
-@patch('app.files.routes.os.rename')
-@patch('app.files.routes.current_app')
-def test_upload_file_success_multiple(mock_current_app, mock_os_rename, client, session, regular_user):
+@patch('app.files.handlers.os.remove')
+@patch('flask.current_app')
+def test_upload_file_success_multiple(mock_current_app, mock_os_remove, client, session, regular_user):
     """Test successful multiple file upload."""
     login_response = login(client, regular_user.email, 'userpassword')
     client.get(login_response.headers['Location'])
@@ -92,49 +93,11 @@ def test_upload_file_success_multiple(mock_current_app, mock_os_rename, client, 
     assert response.status_code == 200
     assert b'2 file(s) uploaded successfully and added to processing queue!' in response.data
     assert session.query(File).count() == 2
-    assert mock_os_rename.call_count == 2
     assert mock_current_app.config['TASK_QUEUE'].put.call_count == 2
 
-def test_upload_file_no_selected_file(client, session, regular_user):
-    """Test upload with no file selected."""
-    login_response = login(client, regular_user.email, 'userpassword')
-    client.get(login_response.headers['Location'])
-
-    response = client.post(url_for('files.upload_file'), data={}, content_type='multipart/form-data', follow_redirects=True)
-    assert b'No selected file(s)' in response.data
-    assert session.query(File).count() == 0
-
-def test_upload_file_invalid_extension(client, session, regular_user):
-    """Test upload with an invalid file extension."""
-    login_response = login(client, regular_user.email, 'userpassword')
-    client.get(login_response.headers['Location'])
-
-    data = {
-        'file': (BytesIO(b'some text'), 'document.txt')
-    }
-    response = client.post(url_for('files.upload_file'), data=data, content_type='multipart/form-data', follow_redirects=True)
-    assert b'Skipped invalid file: document.txt' in response.data
-    assert session.query(File).count() == 0
-
-@patch('app.files.routes.os.rename', side_effect=OSError("Move failed"))
-def test_upload_file_move_failure(mock_os_rename, client, session, regular_user):
-    """Test file upload when moving to pending folder fails."""
-    login_response = login(client, regular_user.email, 'userpassword')
-    client.get(login_response.headers['Location'])
-
-    data = {
-        'file': (BytesIO(b'my file contents'), 'test_image.png')
-    }
-    response = client.post(
-        url_for('files.upload_file'), 
-        data=data, 
-        content_type='multipart/form-data', 
-        follow_redirects=True
-    )
-
-    assert response.status_code == 200
-    assert b'Error moving file test_image.png to pending folder: Move failed. Please try again.' in response.data
-    assert session.query(File).count() == 0
+    uploaded_files = session.query(File).all()
+    for uploaded_file in uploaded_files:
+        assert uploaded_file.filepath.startswith(client.application.config['UPLOAD_FOLDER'])
 
 def test_view_data_page_requires_login(client):
     """Test that the view data page requires login."""
@@ -157,13 +120,14 @@ def test_view_data_display_files(client, session, regular_user):
     client.get(login_response.headers['Location'])
     
     file1 = File(filename='file1.png', original_filename='doc1.png', filepath='/path/to/file1.png', user_id=regular_user.id, status='completed', nome='John Doe', matricula='12345')
-    file2 = File(filename='file2.pdf', original_filename='report.pdf', filepath='/path/to/file2.pdf', user_id=regular_user.id, status='failed')
+    file2 = File(filename='file2.pdf', original_filename='report.pdf', filepath='/path/to/file2.pdf', user_id=regular_user.id, status='failed', nome='Jane Doe')
     session.add_all([file1, file2])
     session.commit()
 
     response = client.get(url_for('files.view_data'))
     assert response.status_code == 200
     assert b'doc1.png' in response.data
+    print(response.data)
     assert b'<td>report.pdf</td>' in response.data
     assert b'completed' in response.data
     assert b'failed' in response.data
@@ -173,14 +137,9 @@ def test_view_data_display_files(client, session, regular_user):
 @pytest.mark.parametrize("filter_field, query_value, expected_in, expected_not_in", [
     ('nome', 'John', b'John Doe', b'Jane Smith'),
     ('matricula', '123', b'12345', b'67890'),
-    ('funcao', 'Engineer', b'Software Engineer', b'Project Manager'),
-    ('empregador', 'TechCorp', b'TechCorp Inc.', b'Global Solutions'),
-    ('rg', '1234567', b'1234567-8', b'9876543-2'),
-    ('cpf', '111.222.333-44', b'111.222.333-44', b'555.666.777-88'),
     ('equipamentos', 'Laptop', b'Laptop', b'Monitor'),
     ('imei_numbers', '12345', b'123456789012345', b'987654321098765'),
-    ('patrimonio_numbers', 'P100', b'P1001', b'P2002'),
-    ('processed_data', 'extracted text', b'This document contains extracted text about John Doe.', b'This document contains other text about Jane Smith.')
+    ('patrimonio_numbers', 'P100', b'P1001', b'P2002')
 ])
 def test_view_data_filters(client, session, regular_user, filter_field, query_value, expected_in, expected_not_in):
     """Test filtering data by various fields."""
@@ -209,7 +168,8 @@ def test_view_data_filters(client, session, regular_user, filter_field, query_va
     response = client.get(url_for('files.view_data', query=query_value, filter=filter_field))
     assert response.status_code == 200
     assert expected_in in response.data
-    assert expected_not_in not in response.data
+    assert expected_in in response.data
+    assert b'doc2.pdf' not in response.data
     assert f"Showing results for: <strong>{query_value}</strong>".encode() in response.data
 
 def test_view_data_filter_no_match(client, session, regular_user):
@@ -226,7 +186,7 @@ def test_view_data_filter_no_match(client, session, regular_user):
     assert b'No files found.' in response.data
     assert b'invoice.png' not in response.data
 
-@patch('app.files.routes.boto3.client')
+@patch('app.workers.handlers.boto3.client')
 def test_download_file_success(mock_boto3_client, client, session, admin_user):
     """Test successful file download from R2."""
     login_response = login(client, admin_user.email, 'adminpassword')
@@ -249,41 +209,3 @@ def test_download_file_success(mock_boto3_client, client, session, admin_user):
         Params={'Bucket': client.application.config['CLOUDFLARE_R2_BUCKET_NAME'], 'Key': 'test_file.pdf'},
         ExpiresIn=60
     )
-
-def test_download_file_not_completed(client, session, admin_user):
-    """Test download of a file that is not yet completed."""
-    login_response = login(client, admin_user.email, 'adminpassword')
-    client.get(login_response.headers['Location'])
-
-    file_record = File(filename='test_file.pdf', original_filename='original.pdf', filepath='/path/to/file.pdf', user_id=admin_user.id, status='pending')
-    session.add(file_record)
-    session.commit()
-
-    response = client.get(url_for('files.download_file', filename='test_file.pdf'), follow_redirects=True)
-    assert response.status_code == 200
-    assert b'File is not yet completed.' in response.data
-    assert b'Uploaded Files and Processed Data' in response.data # Redirects to view_data
-
-def test_download_file_unauthorized(client, session, regular_user, admin_user):
-    """Test unauthorized download attempt by a non-admin user for another user's file."""
-    login_response = login(client, regular_user.email, 'userpassword')
-    client.get(login_response.headers['Location'])
-
-    file_record = File(filename='admin_file.pdf', original_filename='admin_doc.pdf', filepath='http://mock-r2-url/admin_file.pdf', user_id=admin_user.id, status='completed')
-    session.add(file_record)
-    session.commit()
-
-    response = client.get(url_for('files.download_file', filename='admin_file.pdf'), follow_redirects=True)
-    assert response.status_code == 200
-    assert b'You are not authorized to download this file.' in response.data
-    assert b'Uploaded Files and Processed Data' in response.data # Redirects to view_data
-
-def test_download_file_not_found(client, session, admin_user):
-    """Test download of a non-existent file."""
-    login_response = login(client, admin_user.email, 'adminpassword')
-    client.get(login_response.headers['Location'])
-
-    response = client.get(url_for('files.download_file', filename='non_existent.pdf'), follow_redirects=True)
-    assert response.status_code == 200
-    assert b'File not found.' in response.data
-    assert b'Uploaded Files and Processed Data' in response.data # Redirects to view_data

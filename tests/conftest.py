@@ -2,7 +2,7 @@ import pytest
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app import create_app
+from app import create_app, shutdown_workers
 from app.models import db, User, File
 from app.config import Config
 
@@ -11,34 +11,54 @@ class TestConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     TESTING = True
     WTF_CSRF_ENABLED = False # Disable CSRF for easier testing
+    # Make sure workers don't actually start
+    NUM_WORKERS = 0
+    # Use test folders
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'test_uploads')
-    PROCESSED_FOLDER = os.path.join(os.getcwd(), 'test_aguardando_processo')
+    PENDING_FOLDER = os.path.join(os.getcwd(), 'test_aguardando_processo')
+    PROCESSING_FOLDER = os.path.join(os.getcwd(), 'test_processando')
+    COMPLETED_FOLDER = os.path.join(os.getcwd(), 'test_completos')
+    FAILED_FOLDER = os.path.join(os.getcwd(), 'test_falhas')
+    # Add dummy R2 config for tests
+    CLOUDFLARE_R2_BUCKET_NAME = 'test-bucket'
+    CLOUDFLARE_R2_ENDPOINT_URL = 'https://test.r2.dev'
+    CLOUDFLARE_ACCOUNT_ID = 'test-account-id'
+    CLOUDFLARE_R2_ACCESS_KEY_ID = 'test-key-id'
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY = 'test-secret-key'
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def app():
-    """Create and configure a new app instance for each test session."""
+    """Create and configure a new app instance for each test."""
     _app = create_app()
     _app.config.from_object(TestConfig)
+    _app.config['SERVER_NAME'] = 'localhost'
 
-    # Ensure test folders exist
-    os.makedirs(_app.config['UPLOAD_FOLDER'], exist_ok=True)
-    os.makedirs(_app.config['PROCESSED_FOLDER'], exist_ok=True)
+    # Create test folders
+    for folder in ['UPLOAD_FOLDER', 'PENDING_FOLDER', 'PROCESSING_FOLDER', 'COMPLETED_FOLDER', 'FAILED_FOLDER']:
+        os.makedirs(_app.config[folder], exist_ok=True)
 
     with _app.app_context():
         db.create_all()
+        
+
         yield _app
+        # Explicitly shut down any worker-related threads
+        shutdown_workers(_app)
         db.drop_all()
 
-    # Clean up test folders after session
-    if os.path.exists(_app.config['UPLOAD_FOLDER']):
-        for f in os.listdir(_app.config['UPLOAD_FOLDER']):
-            os.remove(os.path.join(_app.config['UPLOAD_FOLDER'], f))
-        os.rmdir(_app.config['UPLOAD_FOLDER'])
-    if os.path.exists(_app.config['PROCESSED_FOLDER']):
-        for f in os.listdir(_app.config['PROCESSED_FOLDER']):
-            os.remove(os.path.join(_app.config['PROCESSED_FOLDER'], f))
-        os.rmdir(_app.config['PROCESSED_FOLDER'])
-
+    # Clean up test folders
+    for folder in ['UPLOAD_FOLDER', 'PENDING_FOLDER', 'PROCESSING_FOLDER', 'COMPLETED_FOLDER', 'FAILED_FOLDER']:
+        folder_path = _app.config[folder]
+        if os.path.exists(folder_path):
+            for f in os.listdir(folder_path):
+                try:
+                    os.remove(os.path.join(folder_path, f))
+                except OSError:
+                    pass # Ignore errors if file is gone
+            try:
+                os.rmdir(folder_path)
+            except OSError:
+                pass # Ignore errors if dir is not empty
 
 @pytest.fixture(scope='function')
 def client(app):
@@ -54,19 +74,13 @@ def runner(app):
 def session(app):
     """Provides a clean database session for each test."""
     with app.app_context():
-        connection = db.engine.connect()
-        transaction = connection.begin()
-        options = dict(bind=connection, binds={})
-        session = db.create_scoped_session(options=options)
-        db.session = session
-        yield session
-        transaction.rollback()
-        connection.close()
-        session.remove()
+        yield db.session
+        db.session.remove()
 
 @pytest.fixture(scope='function')
 def admin_user(session):
     """Creates an admin user for testing."""
+    # This fixture now assumes an admin user might already exist from the app fixture
     user = User(username='admin_test', email='admin@example.com', is_admin=True)
     user.set_password('adminpassword')
     session.add(user)
