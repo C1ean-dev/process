@@ -13,6 +13,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{os.path.join(INSTANCE_FOLDER, "site.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+    COMPLETED_FOLDER = os.path.join(os.getcwd(), 'completed')
      
 
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
@@ -21,6 +22,7 @@ class Config:
     FOLDER_MONITOR_INTERVAL_SECONDS = 60 
 
     # Feature Flags
+    R2_FEATURE_FLAG = 'False'
     ENABLE_PDF_COMPRESSION = 'False'
     ENABLE_OCR = 'True'
 

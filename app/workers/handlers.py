@@ -73,21 +73,33 @@ class FileProcessingTask:
             logger.warning(f"Extraction returned empty text for {self.file_id}. No structured data.")
 
     def _upload_to_r2(self):
-        filename = os.path.basename(self.original_filepath)
-        r2_url = self._get_r2_uploader().upload(self.current_filepath, filename)
+        if Config.R2_FEATURE_FLAG == 'True':
+            filename = os.path.basename(self.original_filepath)
+            r2_url = self._get_r2_uploader().upload(self.current_filepath, filename)
 
-        if r2_url:
-            logger.info(f"File {self.file_id} successfully uploaded to R2.")
-            self.current_filepath = r2_url
-            try:
-                os.remove(self.original_filepath)
-                logger.info(f"Removed local file: {self.original_filepath}")
-            except OSError as e:
-                logger.error(f"Error removing local file {self.original_filepath}: {e}")
+            if r2_url:
+                logger.info(f"File {self.file_id} successfully uploaded to R2.")
+                self.current_filepath = r2_url
+                try:
+                    os.remove(self.original_filepath)
+                    logger.info(f"Removed local file: {self.original_filepath}")
+                except OSError as e:
+                    logger.error(f"Error removing local file {self.original_filepath}: {e}")
+            else:
+                self.retries += 1
+                self.processed_data += "\nWarning: Failed to upload to Cloudflare R2."
+                raise IOError("Failed to upload file to R2.")
         else:
-            self.retries += 1
-            self.processed_data += "\nWarning: Failed to upload to Cloudflare R2."
-            raise IOError("Failed to upload file to R2.")
+            logger.info(f"R2_FEATURE_FLAG is disabled. Moving file to completed folder for file ID {self.file_id}.")
+            os.makedirs(Config.COMPLETED_FOLDER, exist_ok=True)
+            new_path = os.path.join(Config.COMPLETED_FOLDER, os.path.basename(self.original_filepath))
+            try:
+                os.rename(self.original_filepath, new_path)
+                self.current_filepath = new_path
+                logger.info(f"Moved file to {new_path}")
+            except OSError as e:
+                logger.error(f"Error moving file {self.original_filepath} to {new_path}: {e}")
+                raise
 
     def _handle_error(self, error_message):
         logger.error(f"Error processing file ID {self.file_id}: {error_message}", exc_info=True)
@@ -158,7 +170,7 @@ class R2Uploader:
         try:
             self.s3_client.upload_file(local_file_path, Config.CLOUDFLARE_R2_BUCKET_NAME, object_name)
             # Retornar a URL pública não assinada é geralmente mais útil para armazenamento no DB
-            public_url = f"{Config.CLOUDFLARE_R2_PUBLIC_URL}/{object_name}"
+            public_url = f"{Config.CLOUDFLARE_R2_ENDPOINT_URL}/{object_name}"
             logger.info(f"File uploaded to R2. Public URL: {public_url}")
             return public_url
         except ClientError as e:

@@ -3,7 +3,7 @@ import uuid
 import logging
 import boto3
 from botocore.exceptions import ClientError
-from flask import render_template, redirect, url_for, flash, request, current_app
+from flask import render_template, redirect, url_for, flash, request, current_app, send_from_directory
 from flask_login import current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
@@ -130,20 +130,27 @@ class FileHandler:
             flash('File is not yet completed and cannot be downloaded.', 'warning')
             return redirect(url_for('files.view_data'))
 
-        try:
-            s3_client = self._get_r2_client()
-            bucket_name = current_app.config['CLOUDFLARE_R2_BUCKET_NAME']
-            presigned_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket_name, 'Key': file_record.filename},
-                ExpiresIn=60  # URL válida por 60 segundos
-            )
-            logger.info(f"Generated presigned URL for download: {presigned_url}")
-            return redirect(presigned_url)
-        except ClientError as e:
-            flash(f"Error generating download link: {e}", 'danger')
-            logger.error(f"Error generating presigned URL: {e}", exc_info=True)
-            return redirect(url_for('files.view_data'))
+        if current_app.config['R2_FEATURE_FLAG'] == 'True':
+            try:
+                s3_client = self._get_r2_client()
+                bucket_name = current_app.config['CLOUDFLARE_R2_BUCKET_NAME']
+                presigned_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket_name, 'Key': file_record.filename},
+                    ExpiresIn=60  # URL válida por 60 segundos
+                )
+                logger.info(f"Generated presigned URL for download: {presigned_url}")
+                return redirect(presigned_url)
+            except ClientError as e:
+                flash(f"Error generating download link: {e}", 'danger')
+                logger.error(f"Error generating presigned URL: {e}", exc_info=True)
+                return redirect(url_for('files.view_data'))
+        else:
+            try:
+                return send_from_directory(current_app.config['COMPLETED_FOLDER'], filename, as_attachment=True)
+            except FileNotFoundError:
+                flash('File not found on local storage.', 'danger')
+                return redirect(url_for('files.view_data'))
 
     def _get_r2_client(self):
         return boto3.client(

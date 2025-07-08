@@ -41,6 +41,58 @@ def mock_file_operations():
 
 # Main test suite for the worker
 
+@patch('app.workers.handlers.Config.R2_FEATURE_FLAG', 'True')
+@patch('app.workers.handlers.R2Uploader.upload', return_value='http://mock-r2-url/test.pdf')
+@patch('app.workers.pdf_processing.extraction.extract_text_from_pdf', return_value='Extracted text')
+@patch('app.workers.duplicate_checker.tasks.process_file_for_duplicates', return_value=False)
+def test_process_file_with_r2_flag_true(
+    mock_check_duplicates, mock_extract_text, mock_upload_r2,
+    mock_db_setup, mock_db_session
+):
+    """Test file processing when R2_FEATURE_FLAG is True."""
+    results_q = Queue()
+    initial_filepath = os.path.join(Config.UPLOAD_FOLDER, 'test_r2_true.pdf')
+    test_file = File(id=2, filename='test_r2_true.pdf', original_filename='orig_true.pdf', filepath=initial_filepath, user_id=1, status='pending')
+    mock_db_session.add(test_file)
+    mock_db_session.commit()
+
+    with patch('builtins.open', mock_open(read_data=b'dummy')) as m_open, \
+         patch('os.remove') as mock_remove:
+        process_file_task(test_file.id, initial_filepath, 0, results_q, 'sqlite:///:memory:', session=mock_db_session)
+
+    mock_db_session.refresh(test_file)
+    assert test_file.status == 'completed'
+    assert test_file.filepath == 'http://mock-r2-url/test.pdf'
+    mock_upload_r2.assert_called_once()
+    mock_remove.assert_called_once_with(initial_filepath)
+
+@patch('app.workers.handlers.Config.R2_FEATURE_FLAG', 'False')
+@patch('app.workers.handlers.Config.COMPLETED_FOLDER', '/tmp/completed')
+@patch('app.workers.pdf_processing.extraction.extract_text_from_pdf', return_value='Extracted text')
+@patch('app.workers.duplicate_checker.tasks.process_file_for_duplicates', return_value=False)
+def test_process_file_with_r2_flag_false(
+    mock_check_duplicates, mock_extract_text,
+    mock_db_setup, mock_db_session
+):
+    """Test file processing when R2_FEATURE_FLAG is False."""
+    results_q = Queue()
+    initial_filepath = os.path.join(Config.UPLOAD_FOLDER, 'test_r2_false.pdf')
+    completed_filepath = os.path.join('/tmp/completed', 'test_r2_false.pdf')
+    test_file = File(id=3, filename='test_r2_false.pdf', original_filename='orig_false.pdf', filepath=initial_filepath, user_id=1, status='pending')
+    mock_db_session.add(test_file)
+    mock_db_session.commit()
+
+    with patch('builtins.open', mock_open(read_data=b'dummy')) as m_open, \
+         patch('os.rename') as mock_rename, \
+         patch('os.makedirs') as mock_makedirs:
+        process_file_task(test_file.id, initial_filepath, 0, results_q, 'sqlite:///:memory:', session=mock_db_session)
+
+    mock_db_session.refresh(test_file)
+    assert test_file.status == 'completed'
+    assert test_file.filepath == completed_filepath
+    mock_makedirs.assert_called_once_with('/tmp/completed', exist_ok=True)
+    mock_rename.assert_called_once_with(initial_filepath, completed_filepath)
+
 @patch('app.workers.tasks.FileProcessingTask')
 @patch('app.workers.pdf_processing.extraction.extract_data_from_text')
 @patch('app.workers.duplicate_checker.tasks.process_file_for_duplicates', return_value=False)
@@ -119,7 +171,3 @@ def test_worker_main_loop(mock_process_task, mock_db_setup):
     worker_main(task_q, results_q, 'sqlite:///:memory:')
 
     mock_process_task.assert_called_once_with(1, '/path/one', 0, results_q, 'sqlite:///:memory:', session=ANY)
-
-
-
-
