@@ -65,7 +65,6 @@ class FileProcessingTask:
         file_extension = os.path.splitext(self.current_filepath)[1].lower()
         if file_extension != '.pdf':
             raise ValueError(f"Unsupported file type: {file_extension}")
-
         self.processed_data = extract_text_from_pdf(self.current_filepath)
         if self.processed_data and self.processed_data.strip():
             self.structured_data = extract_data_from_text(self.processed_data)
@@ -129,10 +128,17 @@ class FileProcessingTask:
                 file_record.retries = self.retries
                 if file_path: file_record.filepath = file_path
                 if processed_data: file_record.processed_data = processed_data.strip()
-                if structured_data: 
+                if structured_data:
                     file_record.nome = structured_data.get('nome')
                     file_record.matricula = structured_data.get('matricula')
-                    file_record.structured_data = structured_data
+                    file_record.funcao = structured_data.get('funcao')
+                    file_record.empregador = structured_data.get('empregador')
+                    file_record.rg = structured_data.get('rg')
+                    file_record.cpf = structured_data.get('cpf')
+                    file_record.equipamentos = structured_data.get('equipamentos')
+                    file_record.data_documento = structured_data.get('data_documento')
+                    file_record.imei_numbers = structured_data.get('imei_numbers')
+                    file_record.patrimonio_numbers = structured_data.get('patrimonio_numbers')
                 self.session.commit()
                 logger.info(f"DB status for file ID {self.file_id} updated to '{status}'.")
         except Exception as e:

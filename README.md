@@ -60,11 +60,7 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
     O aplicativo usa SQLite por padrão (`site.db`). Se você modificou o modelo `File` (adicionando a coluna `retries`), você precisará atualizar o banco de dados.
 
     *   **Opção 1 (Recomendado para Desenvolvimento)**: Exclua o arquivo `site.db` (localizado em `instance/site.db` dentro do diretório do projeto) e o aplicativo o recriará automaticamente na próxima execução.
-    *   **Opção 2 (Para Produção com Flask-Migrate)**: Se você estiver usando Flask-Migrate, execute os comandos de migração:
-        ```bash
-        flask db migrate -m "Add retries column to File model"
-        flask db upgrade
-        ```
+    *   **Opção 2 (Para Produção)**: Use o comando `python -m app recreate_db` para recriar o banco de dados (⚠️ **ATENÇÃO**: Este comando deleta todos os dados existentes).
 
 5.  **Defina variáveis de ambiente:**
     Crie um arquivo `.env` na raiz do projeto com:
@@ -105,6 +101,7 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
 3.  Faça login com suas credenciais.
 4.  Navegue até a página de upload para enviar seus documentos.
 5.  Acompanhe o status dos seus arquivos na página de dados.
+6.  Acompanhe o status dos seus arquivos na página de dados.
 
 ## Contribuição
 

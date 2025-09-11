@@ -13,6 +13,18 @@ load_dotenv()
 app = create_app()
 
 def recreate_db():
+    """Recreate database - USE WITH CAUTION: This will delete all data!"""
+    env = os.getenv('FLASK_ENV', 'development')
+    if env == 'production':
+        print("ERROR: Cannot recreate database in production environment!")
+        print("Use 'python -m app recreate_db' only in development.")
+        return
+
+    confirm = input("This will DELETE ALL DATA. Are you sure? (type 'yes' to confirm): ")
+    if confirm.lower() != 'yes':
+        print("Operation cancelled.")
+        return
+
     with app.app_context():
         print("Shutting down workers...")
         shutdown_workers(app)
