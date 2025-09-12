@@ -5,6 +5,7 @@ import boto3
 from botocore.exceptions import ClientError
 from flask import render_template, redirect, url_for, flash, request, current_app, send_from_directory
 from flask_login import current_user
+from flask_paginate import Pagination
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
@@ -86,12 +87,16 @@ class FileHandler:
             return redirect(url_for('files.view_data', query=query, filter=filter_field))
 
         files_query = self._build_data_query(query, filter_field)
-        files = files_query.all()
+        page = int(request.args.get('page', 1))
+        per_page = 10
+        total = files_query.count()
+        files = files_query.offset((page - 1) * per_page).limit(per_page).all()
+        pagination = Pagination(page=page, per_page=per_page, total=total, css_framework='bootstrap4')
         
         if query:
             flash(f"Showing results for '{query}' in '{filter_field}'", 'info')
 
-        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field)
+        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination)
 
     def _build_data_query(self, query, filter_field):
         files_query = File.query.filter(File.status.in_(['completed', 'failed'])).order_by(File.upload_date.desc())
