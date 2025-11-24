@@ -51,10 +51,15 @@ class FileHandler:
         successful_uploads = 0
         for file in files:
             if file and self._allowed_file(file.filename):
+                # Check file size for PDFs
+                if file.filename.lower().endswith('.pdf') and file.content_length > current_app.config['MAX_PDF_SIZE']:
+                    flash(f'PDF file "{file.filename}" is too large. Maximum size is 200 MB.', 'danger')
+                    continue
+
                 original_filename = secure_filename(file.filename)
                 unique_filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
                 file_path_in_uploads = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
-                
+
                 file.save(file_path_in_uploads)
 
                 new_file = File(
@@ -69,7 +74,7 @@ class FileHandler:
 
                 record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
 
-                mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath, 'retries': new_file.retries})
+                mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath})
                 successful_uploads += 1
                 logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
 
@@ -91,17 +96,23 @@ class FileHandler:
         files_query = self._build_data_query(query, filter_field)
         page = int(request.args.get('page', 1))
         per_page = 10
-        total = files_query.count()
+        total_filtered = files_query.count()
         files = files_query.offset((page - 1) * per_page).limit(per_page).all()
-        pagination = Pagination(page=page, per_page=per_page, total=total, css_framework='bootstrap4')
-        
+        pagination = Pagination(page=page, per_page=per_page, total=total_filtered, css_framework='bootstrap4')
+
+        # Total PDFs uploaded by the user
+        total_pdfs = File.query.filter_by(user_id=current_user.id).count()
+
         if query:
             flash(f"Showing results for '{query}' in '{filter_field}'", 'info')
 
-        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination)
+        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination, total=total_pdfs)
 
     def _build_data_query(self, query, filter_field):
-        files_query = File.query.filter(File.status.in_(['completed', 'failed'])).order_by(File.upload_date.desc())
+        files_query = File.query.filter(File.status.in_(['completed', 'failed']))
+        if not current_user.is_admin:
+            files_query = files_query.filter_by(user_id=current_user.id)
+        files_query = files_query.order_by(File.upload_date.desc())
         
         if not query:
             return files_query

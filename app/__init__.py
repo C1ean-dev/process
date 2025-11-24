@@ -103,7 +103,6 @@ def start_workers(app):
                     file_id = message['file_id']
                     new_status = message['status']
                     processed_data = message['processed_data']
-                    new_retries = message['retries']
                     new_file_path = message['filepath']
                     extracted_structured_data = message['structured_data']
 
@@ -113,7 +112,6 @@ def start_workers(app):
                     file_record = db.session.query(File).get(file_id)
                     if file_record:
                         file_record.processed_data = processed_data
-                        file_record.retries = new_retries # Update retry count
 
                         # Update structured data fields
                         file_record.nome = extracted_structured_data.get('nome')
@@ -143,27 +141,14 @@ def start_workers(app):
                         else:
                             file_record.patrimonio_numbers = None
 
-
-                        if new_status == 'failed' and new_retries < Config.MAX_RETRIES: # Use Config.MAX_RETRIES
-                            file_record.status = 'retrying' # Set status to retrying
-                            file_record.filepath = new_file_path # Update filepath in DB
-                            try:
-                                db.session.commit() # Commit status and filepath update
-                                # Re-add to task queue for retry, using the updated filepath
-                                mq.publish_task({'file_id': file_id, 'filepath': file_record.filepath, 'retries': new_retries})
-                                logger.info(f"Main app re-queued file {file_id} for retry (Attempt {new_retries + 1}/{Config.MAX_RETRIES}).")
-                            except Exception as commit_e:
-                                db.session.rollback()
-                                logger.error(f"Error committing file status update for {file_id} during retry re-queue: {commit_e}", exc_info=True)
-                        else:
-                            file_record.status = new_status # Set final status (completed or failed after max retries)
-                            file_record.filepath = new_file_path # Update filepath to the final folder (completed or failed)
-                            try:
-                                db.session.commit()
-                                logger.info(f"Main app updated file {file_id} to final status '{new_status}' and filepath '{new_file_path}'.")
-                            except Exception as commit_e:
-                                db.session.rollback()
-                                logger.error(f"Error committing file status update for {file_id} to final status: {commit_e}", exc_info=True)
+                        file_record.status = new_status
+                        file_record.filepath = new_file_path
+                        try:
+                            db.session.commit()
+                            logger.info(f"Main app updated file {file_id} to status '{new_status}' and filepath '{new_file_path}'.")
+                        except Exception as commit_e:
+                            db.session.rollback()
+                            logger.error(f"Error committing file status update for {file_id}: {commit_e}", exc_info=True)
                     else:
                         logger.warning(f"Main app could not find file {file_id} to update status.")
                     ch.basic_ack(delivery_tag=method.delivery_tag)

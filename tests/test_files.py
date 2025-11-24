@@ -2,7 +2,7 @@ import pytest
 from flask import url_for
 from app.models import File, User
 from tests.test_auth import login # Assuming login helper is in test_auth
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 import os
 import json
 from io import BytesIO
@@ -30,24 +30,24 @@ def test_upload_page_requires_login(client):
     assert response.status_code == 302
     assert '/login' in response.headers['Location']
 
+@patch('app.mq.mq.publish_task')
 @patch('app.files.handlers.os.remove')
 @patch('flask.current_app')
-def test_upload_file_success_single(mock_current_app, mock_os_remove, client, session, regular_user):
+def test_upload_file_success_single(mock_current_app, mock_os_remove, mock_publish_task, client, session, regular_user):
     """Test successful single file upload."""
     login_response = login(client, regular_user.email, 'userpassword')
     client.get(login_response.headers['Location'])
-    
+
     mock_current_app.config = client.application.config
-    mock_current_app.config['TASK_QUEUE'] = MagicMock()
 
     data = {
         'file': (BytesIO(b'my file contents'), 'test_image.png')
     }
 
     response = client.post(
-        url_for('files.upload_file'), 
-        data=data, 
-        content_type='multipart/form-data', 
+        url_for('files.upload_file'),
+        data=data,
+        content_type='multipart/form-data',
         follow_redirects=True
     )
 
@@ -59,22 +59,24 @@ def test_upload_file_success_single(mock_current_app, mock_os_remove, client, se
     assert uploaded_file.original_filename == 'test_image.png'
     assert uploaded_file.status == 'pending'
     assert uploaded_file.user_id == regular_user.id
-    
-    mock_current_app.config['TASK_QUEUE'].put.assert_called_once_with(
-        (uploaded_file.id, uploaded_file.filepath, uploaded_file.retries)
-    )
+
+    mock_publish_task.assert_called_once_with({
+        'file_id': uploaded_file.id,
+        'filepath': uploaded_file.filepath,
+        'retries': uploaded_file.retries
+    })
     # The filepath in the DB should now point to the UPLOAD_FOLDER path, as it's deleted after queuing
     assert uploaded_file.filepath.startswith(client.application.config['UPLOAD_FOLDER'])
 
+@patch('app.mq.mq.publish_task')
 @patch('app.files.handlers.os.remove')
 @patch('flask.current_app')
-def test_upload_file_success_multiple(mock_current_app, mock_os_remove, client, session, regular_user):
+def test_upload_file_success_multiple(mock_current_app, mock_os_remove, mock_publish_task, client, session, regular_user):
     """Test successful multiple file upload."""
     login_response = login(client, regular_user.email, 'userpassword')
     client.get(login_response.headers['Location'])
 
     mock_current_app.config = client.application.config
-    mock_current_app.config['TASK_QUEUE'] = MagicMock()
 
     data = {
         'file': [
@@ -84,16 +86,16 @@ def test_upload_file_success_multiple(mock_current_app, mock_os_remove, client, 
     }
 
     response = client.post(
-        url_for('files.upload_file'), 
-        data=data, 
-        content_type='multipart/form-data', 
+        url_for('files.upload_file'),
+        data=data,
+        content_type='multipart/form-data',
         follow_redirects=True
     )
 
     assert response.status_code == 200
     assert b'2 file(s) uploaded successfully and added to processing queue!' in response.data
     assert session.query(File).count() == 2
-    assert mock_current_app.config['TASK_QUEUE'].put.call_count == 2
+    assert mock_publish_task.call_count == 2
 
     uploaded_files = session.query(File).all()
     for uploaded_file in uploaded_files:
@@ -209,3 +211,83 @@ def test_download_file_success(mock_boto3_client, client, session, admin_user):
         Params={'Bucket': client.application.config['CLOUDFLARE_R2_BUCKET_NAME'], 'Key': 'test_file.pdf'},
         ExpiresIn=60
     )
+
+@patch('app.files.handlers.os.remove')
+@patch('flask.current_app')
+def test_upload_invalid_file_type(mock_current_app, mock_os_remove, client, session, regular_user):
+    """Test upload of invalid file type."""
+    login_response = login(client, regular_user.email, 'userpassword')
+    client.get(login_response.headers['Location'])
+
+    mock_current_app.config = client.application.config
+
+    data = {
+        'file': (BytesIO(b'invalid content'), 'test.txt')
+    }
+
+    response = client.post(
+        url_for('files.upload_file'),
+        data=data,
+        content_type='multipart/form-data',
+        follow_redirects=True
+    )
+
+    assert response.status_code == 200
+    assert b'Skipped invalid file: test.txt' in response.data
+    assert session.query(File).count() == 0
+
+def test_download_unauthorized_file(client, session, regular_user, admin_user):
+    """Test unauthorized download attempt."""
+    login_response = login(client, regular_user.email, 'userpassword')
+    client.get(login_response.headers['Location'])
+
+    # File belongs to admin
+    file_record = File(filename='admin_file.pdf', original_filename='admin.pdf', filepath='/path/admin.pdf', user_id=admin_user.id, status='completed')
+    session.add(file_record)
+    session.commit()
+
+    response = client.get(url_for('files.download_file', filename='admin_file.pdf'), follow_redirects=True)
+    assert response.status_code == 200
+    assert b'You are not authorized to download this file.' in response.data
+
+@patch('app.files.handlers.record_metric')
+@patch('app.mq.mq.publish_task')
+@patch('app.files.handlers.os.remove')
+@patch('flask.current_app')
+def test_upload_with_metrics(mock_current_app, mock_os_remove, mock_publish_task, mock_record_metric, client, session, regular_user):
+    """Test upload records metrics."""
+    login_response = login(client, regular_user.email, 'userpassword')
+    client.get(login_response.headers['Location'])
+
+    mock_current_app.config = client.application.config
+
+    data = {
+        'file': (BytesIO(b'file content'), 'metric_test.pdf')
+    }
+
+    response = client.post(
+        url_for('files.upload_file'),
+        data=data,
+        content_type='multipart/form-data',
+        follow_redirects=True
+    )
+
+    assert response.status_code == 200
+    mock_record_metric.assert_called_with('file_upload', 1, {'user_id': regular_user.id, 'file_id': ANY})
+
+@patch('multiprocessing.Process')
+def test_worker_startup(mock_process, app):
+    """Test worker processes are started."""
+    from app import start_workers
+    start_workers(app)
+    # In test config, NUM_WORKERS=0, so no processes started
+    assert mock_process.call_count == 0
+
+@patch('threading.Thread')
+def test_result_processing_thread(mock_thread, app):
+    """Test result processing thread is started."""
+    from app import start_workers
+    start_workers(app)
+    mock_thread.assert_called_once()
+    mock_thread.return_value.start.assert_called_once()
+    mock_thread.return_value.daemon = True

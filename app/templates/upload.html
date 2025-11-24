@@ -10,8 +10,23 @@
                     <form method="POST" action="{{ url_for('files.upload_file') }}" enctype="multipart/form-data">
                         {{ form.hidden_tag() }}
                         <div class="form-group">
-                            {{ form.file.label(class="form-control-label") }}
-                            {{ form.file(class="form-control-file", multiple="multiple") }} {# Added multiple attribute #}
+                            <div id="drop-zone" class="border border-primary rounded p-4 text-center" style="cursor: pointer;">
+                                <p class="mb-2">Arraste e solte os arquivos aqui ou clique para selecionar</p>
+                                <p class="text-muted small">Tipos permitidos: PNG, JPG, JPEG, GIF, PDF (máx. 200 MB por PDF)</p>
+                                {{ form.file(class="d-none", multiple="multiple", id="file-input") }}
+                                <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('file-input').click()">Selecionar Arquivos</button>
+                            </div>
+                            <div id="file-list-container" class="mt-3">
+                                <ul id="file-list" class="list-group"></ul>
+                                <div id="pagination-container" class="mt-3 d-flex justify-content-center" style="display: none;">
+                                    <nav aria-label="File list pagination">
+                                        <ul class="pagination" id="pagination"></ul>
+                                    </nav>
+                                </div>
+                                <div class="mt-3 text-center">
+                                    <p class="text-muted" id="total-files">Total de arquivos selecionados: 0</p>
+                                </div>
+                            </div>
                             {% if form.file.errors %}
                                 {% for error in form.file.errors %}
                                     <div class="text-danger">{{ error }}</div>
@@ -26,4 +41,200 @@
             </div>
         </div>
     </div>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileList = document.getElementById('file-list');
+        const paginationContainer = document.getElementById('pagination-container');
+        const pagination = document.getElementById('pagination');
+        const totalFiles = document.getElementById('total-files');
+        const maxSize = 200 * 1024 * 1024; // 200 MB
+        const itemsPerPage = 5;
+        let currentPage = 1;
+        let allFiles = [];
+
+        // Drag and drop events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('bg-light');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('bg-light');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('bg-light');
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        });
+
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleFiles(files);
+        });
+
+        function handleFiles(files) {
+            allFiles = files;
+            totalFiles.textContent = `Total de arquivos selecionados: ${allFiles.length}`;
+            showPage(1);
+        }
+
+        function showPage(page) {
+            currentPage = page;
+            const start = (page - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const filesToShow = allFiles.slice(start, end);
+
+            fileList.innerHTML = '';
+            filesToShow.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+                if (file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize) {
+                    li.classList.add('list-group-item-danger');
+                    li.innerHTML += ' <span class="badge badge-danger">Muito grande</span>';
+                } else {
+                    li.classList.add('list-group-item-success');
+                    li.innerHTML += ' <span class="badge badge-success">OK</span>';
+                }
+                fileList.appendChild(li);
+            });
+
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(allFiles.length / itemsPerPage);
+            pagination.innerHTML = '';
+
+            if (totalPages <= 1) {
+                paginationContainer.style.display = 'none';
+                return;
+            }
+
+            paginationContainer.style.display = 'block';
+
+            // Previous button
+            const prevLi = document.createElement('li');
+            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+            const prevA = document.createElement('a');
+            prevA.className = 'page-link';
+            prevA.href = '#';
+            prevA.textContent = 'Anterior';
+            prevA.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (currentPage > 1) showPage(currentPage - 1);
+            });
+            prevLi.appendChild(prevA);
+            pagination.appendChild(prevLi);
+
+            // Page numbers with limit
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+
+            // First page and ellipsis if needed
+            if (startPage > 1) {
+                const firstLi = document.createElement('li');
+                firstLi.className = 'page-item';
+                const firstA = document.createElement('a');
+                firstA.className = 'page-link';
+                firstA.href = '#';
+                firstA.textContent = '1';
+                firstA.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage(1);
+                });
+                firstLi.appendChild(firstA);
+                pagination.appendChild(firstLi);
+
+                if (startPage > 2) {
+                    const ellipsisLi = document.createElement('li');
+                    ellipsisLi.className = 'page-item disabled';
+                    const ellipsisSpan = document.createElement('span');
+                    ellipsisSpan.className = 'page-link';
+                    ellipsisSpan.textContent = '...';
+                    ellipsisLi.appendChild(ellipsisSpan);
+                    pagination.appendChild(ellipsisLi);
+                }
+            }
+
+            // Visible page numbers
+            for (let i = startPage; i <= endPage; i++) {
+                const li = document.createElement('li');
+                li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+                const a = document.createElement('a');
+                a.className = 'page-link';
+                a.href = '#';
+                a.textContent = i;
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage(i);
+                });
+                li.appendChild(a);
+                pagination.appendChild(li);
+            }
+
+            // Last page and ellipsis if needed
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    const ellipsisLi = document.createElement('li');
+                    ellipsisLi.className = 'page-item disabled';
+                    const ellipsisSpan = document.createElement('span');
+                    ellipsisSpan.className = 'page-link';
+                    ellipsisSpan.textContent = '...';
+                    ellipsisLi.appendChild(ellipsisSpan);
+                    pagination.appendChild(ellipsisLi);
+                }
+
+                const lastLi = document.createElement('li');
+                lastLi.className = 'page-item';
+                const lastA = document.createElement('a');
+                lastA.className = 'page-link';
+                lastA.href = '#';
+                lastA.textContent = totalPages;
+                lastA.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showPage(totalPages);
+                });
+                lastLi.appendChild(lastA);
+                pagination.appendChild(lastLi);
+            }
+
+            // Next button
+            const nextLi = document.createElement('li');
+            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+            const nextA = document.createElement('a');
+            nextA.className = 'page-link';
+            nextA.href = '#';
+            nextA.textContent = 'Próximo';
+            nextA.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (currentPage < totalPages) showPage(currentPage + 1);
+            });
+            nextLi.appendChild(nextA);
+            pagination.appendChild(nextLi);
+        }
+
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const files = fileInput.files;
+            for (let file of files) {
+                if (file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize) {
+                    alert(`PDF file "${file.name}" is too large. Maximum size is 200 MB.`);
+                    e.preventDefault();
+                    return false;
+                }
+            }
+        });
+    </script>
 {% endblock content %}

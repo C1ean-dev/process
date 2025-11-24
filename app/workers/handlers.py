@@ -19,11 +19,10 @@ class FileProcessingTask:
     Encapsula a lógica de orquestração para processar um único arquivo.
     """
 
-    def __init__(self, file_id: int, file_path: str, retries: int, session: Session):
+    def __init__(self, file_id: int, file_path: str, session: Session):
         self.file_id = file_id
         self.original_filepath = file_path
         self.current_filepath = file_path
-        self.retries = retries
         self.session = session
         self.status = 'pending'
         self.processed_data = ""
@@ -32,7 +31,7 @@ class FileProcessingTask:
     def run(self):
         """Executa o fluxo de processamento do arquivo."""
         try:
-            logger.info(f"Worker {os.getpid()} starting task for file ID {self.file_id} (Attempt {self.retries + 1})")
+            logger.info(f"Worker {os.getpid()} starting task for file ID {self.file_id}")
             self._update_db_status('processing')
 
             if self._is_duplicate():
@@ -86,7 +85,6 @@ class FileProcessingTask:
                 except OSError as e:
                     logger.error(f"Error removing local file {self.original_filepath}: {e}")
             else:
-                self.retries += 1
                 self.processed_data += "\nWarning: Failed to upload to Cloudflare R2."
                 raise IOError("Failed to upload file to R2.")
         else:
@@ -104,7 +102,6 @@ class FileProcessingTask:
     def _handle_error(self, error_message):
         logger.error(f"Error processing file ID {self.file_id}: {error_message}", exc_info=True)
         self.status = 'failed'
-        self.retries += 1
         self.processed_data = error_message
         self._update_db_status('failed', processed_data=error_message)
 
@@ -126,7 +123,6 @@ class FileProcessingTask:
             'file_id': self.file_id,
             'status': self.status,
             'processed_data': self.processed_data,
-            'retries': self.retries,
             'filepath': self.current_filepath,
             'structured_data': self.structured_data
         })
@@ -137,7 +133,6 @@ class FileProcessingTask:
             file_record = self.session.get(File, self.file_id)
             if file_record:
                 file_record.status = status
-                file_record.retries = self.retries
                 if file_path: file_record.filepath = file_path
                 if processed_data: file_record.processed_data = processed_data.strip()
                 if structured_data:
