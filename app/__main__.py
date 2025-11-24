@@ -1,5 +1,6 @@
 import sys
 import os
+import config
 
 # Add the parent directory to sys.path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -13,6 +14,18 @@ load_dotenv()
 app = create_app()
 
 def recreate_db():
+    """Recreate database - USE WITH CAUTION: This will delete all data!"""
+    env = config.Config.FLASK_ENV
+    if env == 'production':
+        print("ERROR: Cannot recreate database in production environment!")
+        print("Use 'python -m app recreate_db' only in development.")
+        return
+
+    confirm = input("This will DELETE ALL DATA. Are you sure? (type 'yes' to confirm): ")
+    if confirm.lower() != 'yes':
+        print("Operation cancelled.")
+        return
+
     with app.app_context():
         print("Shutting down workers...")
         shutdown_workers(app)

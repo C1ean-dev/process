@@ -25,31 +25,10 @@ def compress_pdf(input_pdf_path, output_pdf_path, quality='screen'):
         Config.GHOSTSCRIPT_EXEC,
         '-sDEVICE=pdfwrite',
         '-dCompatibilityLevel=1.4',
+        f'-dPDFSETTINGS=/{quality}',
         '-dNOPAUSE',
         '-dBATCH',
         '-q',
-        # Explicit image compression and downsampling for aggressive reduction
-        '-dColorImageResolution=50', # Lowered resolution for more aggressive compression
-        '-dGrayImageResolution=50',  # Lowered resolution for more aggressive compression
-        '-dMonoImageResolution=50',  # Lowered resolution for more aggressive compression
-        '-dColorImageDownsampleType=/Bicubic',
-        '-dGrayImageDownsampleType=/Bicubic',
-        '-dMonoImageDownsampleType=/Bicubic',
-        '-dColorImageCompression=/DCTEncode', # JPEG compression for color images
-        '-dGrayImageCompression=/DCTEncode', # JPEG compression for grayscale images
-        '-dMonoImageCompression=/CCITTFaxEncode', # CCITTFax compression for monochrome images (good for scanned text)
-        '-dEmbedAllFonts=false', # Do not embed all fonts
-        '-dSubsetFonts=true', # Subset fonts if embedded (only embed used characters)
-        '-dDetectDuplicateImages=true', # Detect and reuse duplicate images
-        '-dCompressPages=true', # Compress page content streams
-        '-dFastWebView=true', # Optimize for web viewing (linearize PDF)
-        '-dEncodeColorImages=true', # Ensure images are re-encoded
-        '-dEncodeGrayImages=true',
-        '-dEncodeMonoImages=true',
-        '-dAutoFilterColorImages=true', # Auto-select best filter for color images
-        '-dAutoFilterGrayImages=true',
-        '-dAutoFilterMonoImages=true',
-        '-dJPEGQ=50', # Set JPEG quality for DCTEncode (0-100, lower is more compression)
         f'-sOutputFile={output_pdf_path}',
         input_pdf_path
     ]

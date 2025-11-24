@@ -7,11 +7,12 @@ from .config import Config # Changed to relative import
 from .models import db, User, File # Import File model
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, current_user
-from multiprocessing import Process, Queue
-from .workers.tasks import worker_main # Import the worker function from its new path
+from .mq import mq # Import message queue
+from .workers.tasks import worker_main # Import worker_main
 import atexit # For graceful shutdown
 import threading # Import threading for Event
 import json # Import json for structured data serialization
+from multiprocessing import Process
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -29,11 +30,7 @@ def from_json(value):
         return value # Return original value if not valid JSON
 
 
-# Global queues and worker processes list
-task_queue = Queue() # For sending tasks to workers
-results_queue = Queue() # For receiving results from workers
-worker_processes = []
-NUM_WORKERS = os.cpu_count() - 2 # Number of worker processes to run
+# Global message queue
 
 
 def create_app():
@@ -61,9 +58,8 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-    # Store the task queue and db_uri in app config for access in blueprints
-    app.config['TASK_QUEUE'] = task_queue
-    app.config['RESULTS_QUEUE'] = results_queue # Store results queue in config
+    # Store the message queue and db_uri in app config for access in blueprints
+    app.config['MQ'] = mq
     app.config['DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI']
 
     # Import and register blueprints
@@ -89,30 +85,31 @@ def create_app():
     return app
 
 def start_workers(app):
-    """Starts the worker processes."""
-    logger.info(f"Starting {NUM_WORKERS} worker processes...")
-    for _ in range(NUM_WORKERS):
-        # Pass both queues to the worker_main
-        worker_process = Process(target=worker_main, args=(task_queue, results_queue, app.config['DATABASE_URI']))
-        worker_process.daemon = True # Allow main program to exit even if workers are running
+    """Starts the worker processes and results consumer thread."""
+    # Start worker processes
+    for _ in range(Config.NUM_WORKERS):
+        worker_process = Process(target=worker_main, args=(app.config['DATABASE_URI'],))
+        worker_process.daemon = True
         worker_process.start()
-        worker_processes.append(worker_process)
         logger.info(f"Worker process {worker_process.pid} started.")
 
     # Start a background thread to process results from workers
     from threading import Thread
     def process_results_from_queue(app_context):
-        with app_context:
-            # Import File model here to ensure it's available in the thread's context
-            from .models import File
-            while True:
+        def callback(ch, method, properties, body):
+            with app_context:
                 try:
-                    # Now receiving file_id, new_status, processed_data, new_retries, new_file_path, and extracted_structured_data
-                    file_id, new_status, processed_data, new_retries, new_file_path, extracted_structured_data = results_queue.get()
-                    if file_id is None: # Sentinel to stop the thread
-                        logger.info("Results processing thread received stop signal. Exiting.")
-                        break
-                    
+                    message = json.loads(body)
+                    file_id = message['file_id']
+                    new_status = message['status']
+                    processed_data = message['processed_data']
+                    new_retries = message['retries']
+                    new_file_path = message['filepath']
+                    extracted_structured_data = message['structured_data']
+
+                    # Import File model here to ensure it's available in the thread's context
+                    from .models import File
+
                     file_record = db.session.query(File).get(file_id)
                     if file_record:
                         file_record.processed_data = processed_data
@@ -126,7 +123,7 @@ def start_workers(app):
                         file_record.rg = extracted_structured_data.get('rg')
                         file_record.cpf = extracted_structured_data.get('cpf')
                         file_record.data_documento = extracted_structured_data.get('data')
-                        
+
                         # Convert equipments list to JSON string for storage
                         if 'equipamentos' in extracted_structured_data and extracted_structured_data['equipamentos'] is not None:
                             file_record.equipamentos = json.dumps(extracted_structured_data['equipamentos'])
@@ -153,7 +150,7 @@ def start_workers(app):
                             try:
                                 db.session.commit() # Commit status and filepath update
                                 # Re-add to task queue for retry, using the updated filepath
-                                task_queue.put((file_id, file_record.filepath, new_retries))
+                                mq.publish_task({'file_id': file_id, 'filepath': file_record.filepath, 'retries': new_retries})
                                 logger.info(f"Main app re-queued file {file_id} for retry (Attempt {new_retries + 1}/{Config.MAX_RETRIES}).")
                             except Exception as commit_e:
                                 db.session.rollback()
@@ -169,11 +166,12 @@ def start_workers(app):
                                 logger.error(f"Error committing file status update for {file_id} to final status: {commit_e}", exc_info=True)
                     else:
                         logger.warning(f"Main app could not find file {file_id} to update status.")
-                except (ValueError, EOFError) as e:
-                    logger.error(f"Error in results processing thread during shutdown: {e}", exc_info=True)
-                    break # Exit loop to allow thread to terminate
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as e:
-                    logger.error(f"Error in results processing thread: {e}", exc_info=True)
+                    logger.error(f"Error in results processing: {e}", exc_info=True)
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+
+        mq.consume_results(callback)
 
     results_thread = Thread(target=process_results_from_queue, args=(app.app_context(),))
     results_thread.daemon = True
@@ -185,26 +183,14 @@ def start_workers(app):
 
 
 def shutdown_workers(app): # Accept app as argument
-    """Sends stop signals to workers and joins them."""
-    logger.info("Shutting down worker processes...")
-    for _ in worker_processes:
-        task_queue.put((None, None, None)) # Send sentinel value to stop each worker (now expects 3 args)
-    
-    # Send sentinel to results processing thread
-    results_queue.put((None, None, None, None, None, None)) # Now expects 6 args
+    """Shuts down the results processing thread."""
+    logger.info("Shutting down results processing thread...")
 
-    
-
-    for worker_process in worker_processes:
-        worker_process.join(timeout=5) # Give workers some time to finish
-        if worker_process.is_alive():
-            logger.warning(f"Worker process {worker_process.pid} did not terminate gracefully. Terminating.")
-            worker_process.terminate()
-    
     # Wait for results thread to finish
     if 'RESULTS_THREAD' in app.config and app.config['RESULTS_THREAD'].is_alive(): # Use app.config
         app.config['RESULTS_THREAD'].join(timeout=5) # Use app.config
         if app.config['RESULTS_THREAD'].is_alive():
             logger.warning("Results processing thread did not terminate gracefully.")
 
-    logger.info("All worker processes, results thread, and folder monitor shut down.")
+    mq.close()
+    logger.info("Results thread and message queue shut down.")

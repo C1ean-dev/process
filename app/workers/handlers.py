@@ -1,14 +1,16 @@
 import os
 import logging
+import json
 import boto3
 from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
 from multiprocessing import Queue
 
-from app.models import File
+from app.models import File, record_metric
 from app.config import Config
 from app.workers.pdf_processing.extraction import extract_text_from_pdf, extract_data_from_text
 from app.workers.duplicate_checker.tasks import process_file_for_duplicates
+from app.mq import mq
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +19,11 @@ class FileProcessingTask:
     Encapsula a lógica de orquestração para processar um único arquivo.
     """
 
-    def __init__(self, file_id: int, file_path: str, retries: int, results_q: Queue, session: Session):
+    def __init__(self, file_id: int, file_path: str, retries: int, session: Session):
         self.file_id = file_id
         self.original_filepath = file_path
         self.current_filepath = file_path
         self.retries = retries
-        self.results_q = results_q
         self.session = session
         self.status = 'pending'
         self.processed_data = ""
@@ -65,7 +66,6 @@ class FileProcessingTask:
         file_extension = os.path.splitext(self.current_filepath)[1].lower()
         if file_extension != '.pdf':
             raise ValueError(f"Unsupported file type: {file_extension}")
-
         self.processed_data = extract_text_from_pdf(self.current_filepath)
         if self.processed_data and self.processed_data.strip():
             self.structured_data = extract_data_from_text(self.processed_data)
@@ -115,10 +115,21 @@ class FileProcessingTask:
             processed_data=self.processed_data,
             structured_data=self.structured_data
         )
-        self.results_q.put((
-            self.file_id, self.status, self.processed_data,
-            self.retries, self.current_filepath, self.structured_data
-        ))
+        if self.status == 'completed' and self.structured_data:
+            equipamentos = self.structured_data.get('equipamentos', [])
+            record_metric('equipment_count', len(equipamentos), {'file_id': self.file_id}, self.session)
+            imei_numbers = self.structured_data.get('imei_numbers', [])
+            record_metric('imei_count', len(imei_numbers), {'file_id': self.file_id}, self.session)
+            patrimonio_numbers = self.structured_data.get('patrimonio_numbers', [])
+            record_metric('patrimonio_count', len(patrimonio_numbers), {'file_id': self.file_id}, self.session)
+        mq.publish_result({
+            'file_id': self.file_id,
+            'status': self.status,
+            'processed_data': self.processed_data,
+            'retries': self.retries,
+            'filepath': self.current_filepath,
+            'structured_data': self.structured_data
+        })
         logger.info(f"Worker {os.getpid()} finished task for file ID {self.file_id}. Final status: {self.status}")
 
     def _update_db_status(self, status, file_path=None, processed_data=None, structured_data=None):
@@ -129,10 +140,17 @@ class FileProcessingTask:
                 file_record.retries = self.retries
                 if file_path: file_record.filepath = file_path
                 if processed_data: file_record.processed_data = processed_data.strip()
-                if structured_data: 
+                if structured_data:
                     file_record.nome = structured_data.get('nome')
                     file_record.matricula = structured_data.get('matricula')
-                    file_record.structured_data = structured_data
+                    file_record.funcao = structured_data.get('funcao')
+                    file_record.empregador = structured_data.get('empregador')
+                    file_record.rg = structured_data.get('rg')
+                    file_record.cpf = structured_data.get('cpf')
+                    file_record.equipamentos = json.dumps(structured_data.get('equipamentos')) if structured_data.get('equipamentos') else None
+                    file_record.data_documento = structured_data.get('data')
+                    file_record.imei_numbers = json.dumps(structured_data.get('imei_numbers')) if structured_data.get('imei_numbers') else None
+                    file_record.patrimonio_numbers = json.dumps(structured_data.get('patrimonio_numbers')) if structured_data.get('patrimonio_numbers') else None
                 self.session.commit()
                 logger.info(f"DB status for file ID {self.file_id} updated to '{status}'.")
         except Exception as e:

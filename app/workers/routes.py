@@ -17,3 +17,4 @@ def worker_status():
                            processing_count=processing_count,
                            completed_count=completed_count,
                            failed_count=failed_count)
+
