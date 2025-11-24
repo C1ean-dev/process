@@ -9,7 +9,7 @@ from flask_paginate import Pagination
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
-from app.models import db, File
+from app.models import db, File, record_metric
 from .forms import FileUploadForm, SearchForm
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,8 @@ class FileHandler:
                 )
                 db.session.add(new_file)
                 db.session.commit()
+
+                record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
 
                 task_queue = current_app.config['TASK_QUEUE']
                 task_queue.put((new_file.id, new_file.filepath, new_file.retries))

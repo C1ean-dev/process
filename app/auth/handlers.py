@@ -1,9 +1,9 @@
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, current_user
-from app.models import User, db
+from app.models import User, db, record_metric
 from app.auth.forms import LoginForm, RegistrationForm
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Dicionário para armazenar tentativas de login falhas
 # Idealmente, isso seria movido para um armazenamento mais persistente como Redis em produção
@@ -34,6 +34,9 @@ class AuthHandler:
 
             if user and user.check_password(form.password.data):
                 login_user(user, remember=form.remember.data)
+                user.last_login = datetime.now(timezone.utc)
+                db.session.commit()
+                record_metric('user_login', 1, {'user_id': user.id, 'username': user.username})
                 self._clear_failed_attempts(email)
                 logger.info(f"User '{user.username}' logged in.")
                 next_page = request.args.get('next')

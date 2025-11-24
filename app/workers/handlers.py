@@ -5,7 +5,7 @@ from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
 from multiprocessing import Queue
 
-from app.models import File
+from app.models import File, record_metric
 from app.config import Config
 from app.workers.pdf_processing.extraction import extract_text_from_pdf, extract_data_from_text
 from app.workers.duplicate_checker.tasks import process_file_for_duplicates
@@ -114,6 +114,13 @@ class FileProcessingTask:
             processed_data=self.processed_data,
             structured_data=self.structured_data
         )
+        if self.status == 'completed' and self.structured_data:
+            equipamentos = self.structured_data.get('equipamentos', [])
+            record_metric('equipment_count', len(equipamentos), {'file_id': self.file_id})
+            imei_numbers = self.structured_data.get('imei_numbers', [])
+            record_metric('imei_count', len(imei_numbers), {'file_id': self.file_id})
+            patrimonio_numbers = self.structured_data.get('patrimonio_numbers', [])
+            record_metric('patrimonio_count', len(patrimonio_numbers), {'file_id': self.file_id})
         self.results_q.put((
             self.file_id, self.status, self.processed_data,
             self.retries, self.current_filepath, self.structured_data
