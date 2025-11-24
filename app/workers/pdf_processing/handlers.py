@@ -16,6 +16,7 @@ class PDFProcessor:
     """
 
     def __init__(self):
+        pytesseract.pytesseract.tesseract_cmd = Config.TESSERACT_CMD
         self.tesseract_ok = self._check_tesseract_installed()
         self.poppler_ok = self._check_poppler_installed()
 

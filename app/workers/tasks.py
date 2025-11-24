@@ -1,10 +1,12 @@
 import os
 import logging
-from multiprocessing import Process, Queue
+import json
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.workers.handlers import FileProcessingTask
+from app.mq import mq
+from app.config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -15,7 +17,7 @@ def _get_db_session(db_uri: str) -> Session:
     Session = sessionmaker(bind=engine)
     return Session()
 
-def process_file_task(file_id: int, file_path: str, current_retries: int, results_queue: Queue, db_uri: str, session: Session):
+def process_file_task(file_id: int, file_path: str, current_retries: int, db_uri: str, session: Session):
     """
     Ponto de entrada para processar um arquivo.
     Instancia e executa a tarefa de processamento de arquivo.
@@ -24,37 +26,34 @@ def process_file_task(file_id: int, file_path: str, current_retries: int, result
         file_id=file_id,
         file_path=file_path,
         retries=current_retries,
-        results_q=results_queue,
         session=session
     )
     task.run()
 
-def worker_main(task_queue: Queue, results_queue: Queue, db_uri: str):
+def worker_main(db_uri: str):
     """
-    O loop principal para um processo worker.
+    O loop principal para um worker.
     Escuta por tarefas e as executa.
     """
-    logger.info(f"Worker process started. PID: {os.getpid()}. Listening for tasks...")
-    
-    while True:
+    logger.info(f"Worker started. Listening for tasks...")
+
+    def callback(ch, method, properties, body):
         worker_session = None
         try:
-            task_data = task_queue.get()
-            if task_data is None:
-                logger.info(f"Worker {os.getpid()} received stop signal. Exiting.")
-                break
+            message = json.loads(body)
+            file_id = message['file_id']
+            file_path = message['filepath']
+            current_retries = message['retries']
+            logger.info(f"Worker received task: File ID {file_id}")
 
-            file_id, file_path, current_retries = task_data
-            logger.info(f"Worker {os.getpid()} received task: File ID {file_id}")
-            
             worker_session = _get_db_session(db_uri)
-            process_file_task(file_id, file_path, current_retries, results_queue, db_uri, session=worker_session)
-
-        except (KeyboardInterrupt, SystemExit):
-            logger.info(f"Worker {os.getpid()} shutting down.")
-            break
+            process_file_task(file_id, file_path, current_retries, db_uri, session=worker_session)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
         except Exception as e:
-            logger.error(f"Worker {os.getpid()} encountered a critical error: {e}", exc_info=True)
+            logger.error(f"Worker encountered a critical error: {e}", exc_info=True)
+            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
         finally:
             if worker_session and worker_session.is_active:
                 worker_session.close()
+
+    mq.consume_tasks(callback)

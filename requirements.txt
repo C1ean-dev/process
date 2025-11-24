@@ -16,3 +16,4 @@ pytest
 prometheus-client
 plotly
 matplotlib
+pika

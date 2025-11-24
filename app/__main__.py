@@ -1,5 +1,6 @@
 import sys
 import os
+import config
 
 # Add the parent directory to sys.path to allow absolute imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,7 +15,7 @@ app = create_app()
 
 def recreate_db():
     """Recreate database - USE WITH CAUTION: This will delete all data!"""
-    env = os.getenv('FLASK_ENV', 'development')
+    env = config.Config.FLASK_ENV
     if env == 'production':
         print("ERROR: Cannot recreate database in production environment!")
         print("Use 'python -m app recreate_db' only in development.")

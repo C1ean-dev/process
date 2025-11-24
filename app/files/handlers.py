@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_
 
 from app.models import db, File, record_metric
+from app.mq import mq
 from .forms import FileUploadForm, SearchForm
 
 logger = logging.getLogger(__name__)
@@ -68,8 +69,7 @@ class FileHandler:
 
                 record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
 
-                task_queue = current_app.config['TASK_QUEUE']
-                task_queue.put((new_file.id, new_file.filepath, new_file.retries))
+                mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath, 'retries': new_file.retries})
                 successful_uploads += 1
                 logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
 

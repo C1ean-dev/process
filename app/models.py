@@ -6,12 +6,16 @@ import json
 
 db = SQLAlchemy()
 
-def record_metric(name, value, tags=None):
+def record_metric(name, value, tags=None, session=None):
     """Record a metric in the database."""
     tags_json = json.dumps(tags) if tags else None
     metric = Metric(name=name, value=value, tags=tags_json)
-    db.session.add(metric)
-    db.session.commit()
+    if session:
+        session.add(metric)
+        session.commit()
+    else:
+        db.session.add(metric)
+        db.session.commit()
 
 class User(db.Model, UserMixin): # Inherit UserMixin
     id = db.Column(db.Integer, primary_key=True)

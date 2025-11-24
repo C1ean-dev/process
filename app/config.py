@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    NUM_WORKERS = '12'
+    NUM_WORKERS = int(os.environ.get('NUM_WORKERS', '12'))
     SECRET_KEY = os.environ.get('SECRET_KEY')
     BASE_DIR = os.path.abspath(os.path.dirname(__file__)) 
     PROJECT_ROOT = os.path.join(BASE_DIR, os.pardir)
@@ -14,22 +14,18 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
     COMPLETED_FOLDER = os.path.join(os.getcwd(), 'completed')
-     
-
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
     MAX_CONTENT_LENGTH = 1024 * 1024 * 1024 
     MAX_RETRIES = 3 
     FOLDER_MONITOR_INTERVAL_SECONDS = 60 
 
     # Feature Flags
-    R2_FEATURE_FLAG = 'False'
-    ENABLE_PDF_COMPRESSION = 'False'
+    R2_FEATURE_FLAG = 'True'
     ENABLE_OCR = 'True'
 
     # External tool paths (adjust as needed for your environment)
-    TESSERACT_CMD = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
-    POPPLER_PATH = 'C:\\poppler\\Library\\bin'
-    GHOSTSCRIPT_EXEC = 'C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe'
+    TESSERACT_CMD = os.path.join(PROJECT_ROOT, 'libs', 'Tesseract-OCR', 'tesseract.exe')
+    POPPLER_PATH = os.path.join(PROJECT_ROOT, 'libs', 'poppler-25.11.0', 'Library', 'bin')
 
     # Cloudflare R2 (S3-compatible) Configuration
     CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
@@ -37,3 +33,9 @@ class Config:
     CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_ACCESS_KEY')
     CLOUDFLARE_R2_BUCKET_NAME = os.environ.get('CLOUDFLARE_R2_BUCKET_NAME')
     CLOUDFLARE_R2_ENDPOINT_URL = os.environ.get('CLOUDFLARE_R2_ENDPOINT_URL')
+
+    # CloudAMQP Configuration
+    CLOUDAMQP_URL = os.environ.get('CLOUDAMQP_URL')
+    FLASK_ENV = os.environ.get('FLASK_ENV')
+
+    
