@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+from unittest.mock import patch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import create_app, shutdown_workers
 from app.models import db, User, File
@@ -95,3 +96,14 @@ def regular_user(session):
     session.add(user)
     session.commit()
     return user
+
+@pytest.fixture(autouse=True)
+def mock_mq():
+    """Mock MQ operations to avoid real connections during tests."""
+    with patch('app.mq.mq.connect'), \
+         patch('app.mq.mq.close'), \
+         patch('app.mq.mq.publish_task'), \
+         patch('app.mq.mq.publish_result'), \
+         patch('app.mq.mq.consume_tasks'), \
+         patch('app.mq.mq.consume_results'):
+        yield

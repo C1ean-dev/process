@@ -17,7 +17,7 @@ def _get_db_session(db_uri: str) -> Session:
     Session = sessionmaker(bind=engine)
     return Session()
 
-def process_file_task(file_id: int, file_path: str, current_retries: int, db_uri: str, session: Session):
+def process_file_task(file_id: int, file_path: str, db_uri: str, session: Session):
     """
     Ponto de entrada para processar um arquivo.
     Instancia e executa a tarefa de processamento de arquivo.
@@ -25,7 +25,6 @@ def process_file_task(file_id: int, file_path: str, current_retries: int, db_uri
     task = FileProcessingTask(
         file_id=file_id,
         file_path=file_path,
-        retries=current_retries,
         session=session
     )
     task.run()
@@ -43,11 +42,10 @@ def worker_main(db_uri: str):
             message = json.loads(body)
             file_id = message['file_id']
             file_path = message['filepath']
-            current_retries = message['retries']
             logger.info(f"Worker received task: File ID {file_id}")
 
             worker_session = _get_db_session(db_uri)
-            process_file_task(file_id, file_path, current_retries, db_uri, session=worker_session)
+            process_file_task(file_id, file_path, db_uri, session=worker_session)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except Exception as e:
             logger.error(f"Worker encountered a critical error: {e}", exc_info=True)
@@ -56,4 +54,8 @@ def worker_main(db_uri: str):
             if worker_session and worker_session.is_active:
                 worker_session.close()
 
-    mq.consume_tasks(callback)
+    try:
+        mq.consume_tasks(callback)
+    except KeyboardInterrupt:
+        logger.info("Worker received KeyboardInterrupt, shutting down gracefully.")
+        mq.close()

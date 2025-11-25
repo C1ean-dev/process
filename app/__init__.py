@@ -86,12 +86,14 @@ def create_app():
 
 def start_workers(app):
     """Starts the worker processes and results consumer thread."""
+    worker_processes = []
     # Start worker processes
     for _ in range(Config.NUM_WORKERS):
         worker_process = Process(target=worker_main, args=(app.config['DATABASE_URI'],))
-        worker_process.daemon = True
         worker_process.start()
+        worker_processes.append(worker_process)
         logger.info(f"Worker process {worker_process.pid} started.")
+    app.config['WORKER_PROCESSES'] = worker_processes
 
     # Start a background thread to process results from workers
     from threading import Thread
@@ -103,7 +105,6 @@ def start_workers(app):
                     file_id = message['file_id']
                     new_status = message['status']
                     processed_data = message['processed_data']
-                    new_retries = message['retries']
                     new_file_path = message['filepath']
                     extracted_structured_data = message['structured_data']
 
@@ -113,7 +114,6 @@ def start_workers(app):
                     file_record = db.session.query(File).get(file_id)
                     if file_record:
                         file_record.processed_data = processed_data
-                        file_record.retries = new_retries # Update retry count
 
                         # Update structured data fields
                         file_record.nome = extracted_structured_data.get('nome')
@@ -143,27 +143,14 @@ def start_workers(app):
                         else:
                             file_record.patrimonio_numbers = None
 
-
-                        if new_status == 'failed' and new_retries < Config.MAX_RETRIES: # Use Config.MAX_RETRIES
-                            file_record.status = 'retrying' # Set status to retrying
-                            file_record.filepath = new_file_path # Update filepath in DB
-                            try:
-                                db.session.commit() # Commit status and filepath update
-                                # Re-add to task queue for retry, using the updated filepath
-                                mq.publish_task({'file_id': file_id, 'filepath': file_record.filepath, 'retries': new_retries})
-                                logger.info(f"Main app re-queued file {file_id} for retry (Attempt {new_retries + 1}/{Config.MAX_RETRIES}).")
-                            except Exception as commit_e:
-                                db.session.rollback()
-                                logger.error(f"Error committing file status update for {file_id} during retry re-queue: {commit_e}", exc_info=True)
-                        else:
-                            file_record.status = new_status # Set final status (completed or failed after max retries)
-                            file_record.filepath = new_file_path # Update filepath to the final folder (completed or failed)
-                            try:
-                                db.session.commit()
-                                logger.info(f"Main app updated file {file_id} to final status '{new_status}' and filepath '{new_file_path}'.")
-                            except Exception as commit_e:
-                                db.session.rollback()
-                                logger.error(f"Error committing file status update for {file_id} to final status: {commit_e}", exc_info=True)
+                        file_record.status = new_status
+                        file_record.filepath = new_file_path
+                        try:
+                            db.session.commit()
+                            logger.info(f"Main app updated file {file_id} to status '{new_status}' and filepath '{new_file_path}'.")
+                        except Exception as commit_e:
+                            db.session.rollback()
+                            logger.error(f"Error committing file status update for {file_id}: {commit_e}", exc_info=True)
                     else:
                         logger.warning(f"Main app could not find file {file_id} to update status.")
                     ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -183,7 +170,19 @@ def start_workers(app):
 
 
 def shutdown_workers(app): # Accept app as argument
-    """Shuts down the results processing thread."""
+    """Shuts down the worker processes and results processing thread."""
+    logger.info("Shutting down worker processes...")
+
+    # Terminate worker processes
+    if 'WORKER_PROCESSES' in app.config:
+        for worker_process in app.config['WORKER_PROCESSES']:
+            if worker_process.is_alive():
+                worker_process.terminate()
+                worker_process.join(timeout=5)
+                if worker_process.is_alive():
+                    logger.warning(f"Worker process {worker_process.pid} did not terminate gracefully.")
+        logger.info("Worker processes shut down.")
+
     logger.info("Shutting down results processing thread...")
 
     # Wait for results thread to finish

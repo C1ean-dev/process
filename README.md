@@ -1,6 +1,6 @@
 # Sistema de Processamento de Documentos
 
-Este é um sistema web desenvolvido com Flask para upload, processamento (OCR) e gerenciamento de documentos. Ele utiliza workers em segundo plano para processar arquivos de forma assíncrona e inclui um sistema de reprocessamento para tarefas que falham.
+Este é um sistema web desenvolvido com Flask para upload, processamento (OCR) e gerenciamento de documentos. Ele utiliza CloudAMQP para fila de mensagens e workers multiprocessing para processar arquivos de forma assíncrona, com sistema de reprocessamento para tarefas que falham.
 
 ## Funcionalidades
 
@@ -14,18 +14,6 @@ Este é um sistema web desenvolvido com Flask para upload, processamento (OCR) e
 *   **Monitoramento de Pastas**: Um monitor de pasta verifica periodicamente a pasta de arquivos pendentes para garantir que todos os arquivos sejam processados, mesmo que não tenham sido adicionados via upload ou se o aplicativo foi reiniciado.
 *   **Organização de Pastas**: Os arquivos são movidos entre pastas de acordo com seu status de processamento.
 
-## Estrutura de Pastas
-
-O projeto utiliza as seguintes pastas para organizar os arquivos:
-
-*   `uploads/`: Onde os arquivos são inicialmente salvos após o upload pelo usuário.
-*   `aguardando_processo/`: (PENDING_FOLDER) Onde os arquivos aguardam para serem processados pelos workers. Arquivos que falham e serão reprocessados também retornam para esta pasta.
-*   `processando/`: (PROCESSING_FOLDER) Onde os arquivos ficam enquanto estão sendo ativamente processados por um worker.
-*   `completos/`: (COMPLETED_FOLDER) Onde os arquivos são movidos após serem processados com sucesso.
-*   `falhas/`: (FAILED_FOLDER) Onde os arquivos são movidos se falharem no processamento após todas as tentativas.
-
-## Instalação
-
 ### Pré-requisitos
 
 *   Python 3.x
@@ -38,8 +26,8 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [URL_DO_SEU_REPOSITORIO]
-    cd [NOME_DO_SEU_REPOSITORIO]
+    git clone https://github.com/C1ean-dev/process
+    cd process
     ```
 
 2.  **Crie e ative um ambiente virtual:**
@@ -71,11 +59,10 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
     # Configurações do Tesseract e Poppler (EX para Windows, ajuste conforme seu SO)
     TESSERACT_CMD='C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
     POPPLER_PATH='C:\\poppler\\Library\\bin'
-    GHOSTSCRIPT_EXEC='C:\\Program Files\\gs\\gs10.05.1\\bin\\gswin64c.exe'
 
     # Feature Flags
-    ENABLE_PDF_COMPRESSION='True' (Beta no momento ela está aumentando o tamanho do arquivo ainda não sei o pq)
     ENABLE_OCR='True'
+    R2_FEATURE_FLAG='True'
 
     # Cloudflare R2 (S3-compatible) Configuration
     CLOUDFLARE_ACCOUNT_ID='seu_account_id_r2'
@@ -83,6 +70,10 @@ O projeto utiliza as seguintes pastas para organizar os arquivos:
     CLOUDFLARE_R2_SECRET_ACCESS_KEY='sua_secret_access_key_r2'
     CLOUDFLARE_R2_BUCKET_NAME='seu_bucket_name_r2'
     CLOUDFLARE_R2_ENDPOINT_URL='seu_endpoint_url_r2'
+
+    # CloudAMQP Configuration
+    CLOUDAMQP_URL='amqps://user:password@host/vhost' # URL fornecida pelo CloudAMQP
+    NUM_WORKERS=4 # Número de workers multiprocessing
     ```
 
 ## Como Executar
@@ -113,12 +104,18 @@ Sinta-se à vontade para contribuir com este projeto.
 
 *   **Flask**: Microframework web para Python.
 *   **SQLAlchemy**: ORM para interação com o banco de dados.
-*   **Celery**: Sistema de fila de tarefas distribuídas para processamento assíncrono.
-*   **Redis**: Broker de mensagens para Celery e cache.
+*   **CloudAMQP**: Serviço de fila de mensagens baseado em RabbitMQ para processamento assíncrono.
+*   **Pika**: Biblioteca Python para interação com RabbitMQ (usada com CloudAMQP).
 *   **Tesseract OCR**: Motor de OCR para extração de texto.
 *   **Pillow**: Biblioteca de processamento de imagens.
-*   **PyPDF2**: Biblioteca para manipulação de PDFs.
+*   **PyPDF2 / pypdf**: Biblioteca para manipulação de PDFs.
+*   **pdf2image**: Conversão de PDFs para imagens para OCR.
 *   **Cloudflare R2**: Armazenamento de objetos compatível com S3 para armazenamento de arquivos.
+*   **Boto3**: Cliente para AWS S3 (usado com Cloudflare R2).
+*   **Flask-Login**: Gerenciamento de autenticação de usuários.
+*   **Flask-WTF**: Formulários web seguros.
+*   **Prometheus Client**: Para métricas e monitoramento.
+*   **Plotly & Matplotlib**: Para visualização de dados (se usado).
 
 ## Licença
 

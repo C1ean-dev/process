@@ -15,9 +15,9 @@ class Config:
     UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
     COMPLETED_FOLDER = os.path.join(os.getcwd(), 'completed')
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-    MAX_CONTENT_LENGTH = 1024 * 1024 * 1024 
-    MAX_RETRIES = 3 
-    FOLDER_MONITOR_INTERVAL_SECONDS = 60 
+    MAX_CONTENT_LENGTH = 1024 * 1024 * 1024
+    MAX_PDF_SIZE = 200 * 1024 * 1024  # 200 MB
+    FOLDER_MONITOR_INTERVAL_SECONDS = 60
 
     # Feature Flags
     R2_FEATURE_FLAG = 'True'
