@@ -86,12 +86,14 @@ def create_app():
 
 def start_workers(app):
     """Starts the worker processes and results consumer thread."""
+    worker_processes = []
     # Start worker processes
     for _ in range(Config.NUM_WORKERS):
         worker_process = Process(target=worker_main, args=(app.config['DATABASE_URI'],))
-        worker_process.daemon = True
         worker_process.start()
+        worker_processes.append(worker_process)
         logger.info(f"Worker process {worker_process.pid} started.")
+    app.config['WORKER_PROCESSES'] = worker_processes
 
     # Start a background thread to process results from workers
     from threading import Thread
@@ -168,7 +170,19 @@ def start_workers(app):
 
 
 def shutdown_workers(app): # Accept app as argument
-    """Shuts down the results processing thread."""
+    """Shuts down the worker processes and results processing thread."""
+    logger.info("Shutting down worker processes...")
+
+    # Terminate worker processes
+    if 'WORKER_PROCESSES' in app.config:
+        for worker_process in app.config['WORKER_PROCESSES']:
+            if worker_process.is_alive():
+                worker_process.terminate()
+                worker_process.join(timeout=5)
+                if worker_process.is_alive():
+                    logger.warning(f"Worker process {worker_process.pid} did not terminate gracefully.")
+        logger.info("Worker processes shut down.")
+
     logger.info("Shutting down results processing thread...")
 
     # Wait for results thread to finish

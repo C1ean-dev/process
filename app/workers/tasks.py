@@ -54,4 +54,8 @@ def worker_main(db_uri: str):
             if worker_session and worker_session.is_active:
                 worker_session.close()
 
-    mq.consume_tasks(callback)
+    try:
+        mq.consume_tasks(callback)
+    except KeyboardInterrupt:
+        logger.info("Worker received KeyboardInterrupt, shutting down gracefully.")
+        mq.close()
