@@ -9,6 +9,7 @@ class FileUploadForm(FlaskForm):
         FileRequired(),
         FileAllowed(Config.ALLOWED_EXTENSIONS, 'Images and PDFs only!')
     ])
+    group = SelectField('Assign to Group (Optional)', coerce=int, choices=[(0, 'No Group')])
     submit = SubmitField('Upload')
 
 class SearchForm(FlaskForm):

@@ -5,11 +5,16 @@ from app.auth.forms import LoginForm, RegistrationForm, RequestResetForm, ResetP
 import logging
 from datetime import datetime, timedelta, timezone
 
+from werkzeug.security import generate_password_hash
 # Dicionário para armazenar tentativas de login falhas
 # Idealmente, isso seria movido para um armazenamento mais persistente como Redis em produção
 failed_login_tracker = {}
+# Tracker para rate limit de reset de senha
+reset_request_tracker = {}
 
 logger = logging.getLogger(__name__)
+
+DUMMY_HASH = generate_password_hash("dummy_password")
 
 class AuthHandler:
     """
@@ -32,7 +37,15 @@ class AuthHandler:
 
             user = User.query.filter_by(email=email).first()
 
-            if user and user.check_password(form.password.data):
+            # Timing attack mitigation: always check a hash
+            if user:
+                password_correct = user.check_password(form.password.data)
+            else:
+                from werkzeug.security import check_password_hash
+                check_password_hash(DUMMY_HASH, form.password.data)
+                password_correct = False
+
+            if password_correct:
                 login_user(user, remember=form.remember.data)
                 user.last_login = datetime.now(timezone.utc)
                 db.session.commit()
@@ -76,8 +89,24 @@ class AuthHandler:
     def forgot_password(self):
         if current_user.is_authenticated:
             return redirect(url_for('files.home'))
+        
+        # IP-based Rate Limit for password reset (5 per minute)
+        ip = request.remote_addr
+        now = datetime.now()
+        if ip not in reset_request_tracker:
+            reset_request_tracker[ip] = []
+        
+        # Clean old attempts
+        reset_request_tracker[ip] = [t for t in reset_request_tracker[ip] if now - t < timedelta(minutes=1)]
+        
+        if len(reset_request_tracker[ip]) >= 5:
+            flash('Too many password reset requests. Please wait a minute.', 'danger')
+            logger.warning(f"Rate limit hit for password reset from IP: {ip}")
+            return render_template('forgot_password.html', title='Reset Password', form=RequestResetForm())
+
         form = RequestResetForm()
         if form.validate_on_submit():
+            reset_request_tracker[ip].append(now)
             user = User.query.filter_by(email=form.email.data).first()
             token = user.get_reset_token()
             reset_url = url_for('auth.reset_password', token=token, _external=True)

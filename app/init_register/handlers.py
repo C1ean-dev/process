@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for, flash
+from flask import render_template, redirect, url_for, flash, abort
 from app.models import db, User
 from app.auth.forms import RegistrationForm
 import logging
@@ -11,10 +11,10 @@ class SetupHandler:
     """
 
     def setup_admin(self):
-        # Se um administrador já existe, redireciona para o login.
+        # Se um administrador já existe, a rota não deve mais estar acessível.
         if User.query.filter_by(is_admin=True).first():
-            flash('Admin user already exists. Please log in.', 'info')
-            return redirect(url_for('auth.login'))
+            logger.warning("Attempt to access setup_admin when admin already exists.")
+            abort(404)
 
         form = RegistrationForm()
         if form.validate_on_submit():

@@ -89,6 +89,9 @@ class File(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref=db.backref('files', lazy=True))
+    
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
+    group = db.relationship('Group', backref=db.backref('files', lazy=True))
 
     def __repr__(self):
         return f'<File {self.filename}>'
@@ -102,3 +105,23 @@ class Metric(db.Model):
 
     def __repr__(self):
         return f'<Metric {self.name} at {self.timestamp}>'
+
+# Association table for User and Group
+group_members = db.Table('group_members',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('group_id', db.Integer, db.ForeignKey('group.id'), primary_key=True)
+)
+
+class Group(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Relationship to members
+    members = db.relationship('User', secondary=group_members, backref=db.backref('groups', lazy='dynamic'))
+    creator = db.relationship('User', foreign_keys=[creator_id], backref='created_groups')
+
+    def __repr__(self):
+        return f'<Group {self.name}>'

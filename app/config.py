@@ -17,6 +17,7 @@ class Config:
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
     MAX_CONTENT_LENGTH = 1024 * 1024 * 1024
     MAX_PDF_SIZE = 200 * 1024 * 1024  # 200 MB
+    MAX_PDF_PAGES = int(os.environ.get('MAX_PDF_PAGES', '100'))
     FOLDER_MONITOR_INTERVAL_SECONDS = 60
 
     # Feature Flags

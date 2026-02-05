@@ -17,3 +17,4 @@ prometheus-client
 plotly
 matplotlib
 pika
+python-magic-bin

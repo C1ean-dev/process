@@ -63,7 +63,14 @@ class PDFProcessor:
         try:
             with open(pdf_path, 'rb') as file:
                 reader = PdfReader(file)
-                for page in reader.pages:
+                num_pages = len(reader.pages)
+                if num_pages > Config.MAX_PDF_PAGES:
+                    logger.warning(f"PDF {pdf_path} exceeds maximum pages ({num_pages} > {Config.MAX_PDF_PAGES}). Processing only first {Config.MAX_PDF_PAGES} pages.")
+                    pages_to_process = reader.pages[:Config.MAX_PDF_PAGES]
+                else:
+                    pages_to_process = reader.pages
+
+                for page in pages_to_process:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
@@ -79,9 +86,20 @@ class PDFProcessor:
             return ""
         text = ""
         try:
-            images = convert_from_path(pdf_path, poppler_path=Config.POPPLER_PATH)
+            # First check page count without converting everything
+            with open(pdf_path, 'rb') as file:
+                reader = PdfReader(file)
+                num_pages = len(reader.pages)
+            
+            if num_pages > Config.MAX_PDF_PAGES:
+                logger.warning(f"PDF {pdf_path} exceeds maximum pages for OCR. Processing only first {Config.MAX_PDF_PAGES} pages.")
+                last_page = Config.MAX_PDF_PAGES
+            else:
+                last_page = num_pages
+
+            images = convert_from_path(pdf_path, last_page=last_page, poppler_path=Config.POPPLER_PATH)
             for i, image in enumerate(images):
-                logger.info(f"Performing OCR on page {i+1} of {pdf_path}")
+                logger.info(f"Performing OCR on page {i+1} of {pdf_path} (Limit: {last_page})")
                 text += pytesseract.image_to_string(image, lang='por') + "\n"
             logger.info(f"Successfully extracted text using OCR from {pdf_path}")
         except Exception as e:

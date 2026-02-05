@@ -7,7 +7,7 @@ from threading import Thread, Event
 
 from flask import Flask, redirect, url_for, flash, render_template, request
 from .config import Config # Changed to relative import
-from .models import db, User, File # Import File model
+from .models import db, User, File, Group # Import models
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, current_user
 from .mq import mq # Import message queue
@@ -66,11 +66,13 @@ def create_app():
     from app.files import files_bp
     from app.init_register import setup_bp
     from app.workers import workers_bp # Import the new workers blueprint
+    from app.groups import groups_bp # Import the groups blueprint
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(files_bp) # Register the new files blueprint
     app.register_blueprint(setup_bp)
     app.register_blueprint(workers_bp) # Register the new workers blueprint
+    app.register_blueprint(groups_bp) # Register the groups blueprint
 
     @app.route('/')
     def initial_redirect():
