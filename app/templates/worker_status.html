@@ -1,50 +1,167 @@
 {% extends "base.html" %}
+
 {% block content %}
-    <div class="row">
-        <div class="col-md-12">
-            <h2 class="mb-4">Worker Status</h2>
-            <p>This page displays the current status of file processing tasks.</p>
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="card text-white bg-info mb-3">
-                        <div class="card-header">Pending Tasks</div>
-                        <div class="card-body">
-                            <h5 class="card-title">{{ pending_count }}</h5>
-                            <p class="card-text">Files waiting to be processed.</p>
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="font-weight-bold text-dark mb-1">
+                <i class="fas fa-server mr-2 text-primary"></i>System Status
+            </h2>
+            <p class="text-muted mb-0">Real-time overview of document processing pipelines</p>
+        </div>
+        <button class="btn btn-outline-primary shadow-sm" onclick="window.location.reload();">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh Data
+        </button>
+    </div>
+
+    <!-- Metrics Grid -->
+    <div class="row mb-5">
+        <!-- Pending -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 border-left-info">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Pending Queue</div>
+                            <div class="h3 mb-0 font-weight-bold text-gray-800">{{ pending_count }}</div>
+                            <small class="text-muted">Waiting for workers</small>
                         </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card text-white bg-warning mb-3">
-                        <div class="card-header">Processing Tasks</div>
-                        <div class="card-body">
-                            <h5 class="card-title">{{ processing_count }}</h5>
-                            <p class="card-text">Files currently being processed.</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card text-white bg-success mb-3">
-                        <div class="card-header">Completed Tasks</div>
-                        <div class="card-body">
-                            <h5 class="card-title">{{ completed_count }}</h5>
-                            <p class="card-text">Files successfully processed.</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card text-white bg-danger mb-3">
-                        <div class="card-header">Failed Tasks</div>
-                        <div class="card-body">
-                            <h5 class="card-title">{{ failed_count }}</h5>
-                            <p class="card-text">Files that failed processing.</p>
+                        <div class="col-auto">
+                            <i class="fas fa-hourglass-half fa-2x text-gray-300 text-info opacity-50"></i>
                         </div>
                     </div>
                 </div>
             </div>
-            <hr>
-            <h3>Recent Tasks</h3>
-            <p>For a detailed list of all files, visit the <a href="{{ url_for('files.view_data') }}">View Data</a> page.</p>
+        </div>
+
+        <!-- Processing -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 border-left-warning">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Processing Now</div>
+                            <div class="h3 mb-0 font-weight-bold text-gray-800">{{ processing_count }}</div>
+                            <small class="text-muted">Active jobs</small>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-cogs fa-2x text-warning opacity-50"></i>
+                        </div>
+                    </div>
+                    {% if processing_count > 0 %}
+                    <div class="progress mt-3" style="height: 4px;">
+                        <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Completed -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 border-left-success">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Completed</div>
+                            <div class="h3 mb-0 font-weight-bold text-gray-800">{{ completed_count }}</div>
+                            <small class="text-muted">Successfully extracted</small>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle fa-2x text-success opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Failed -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 border-left-danger">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Failed</div>
+                            <div class="h3 mb-0 font-weight-bold text-gray-800">{{ failed_count }}</div>
+                            <small class="text-muted">Errors encountered</small>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-exclamation-triangle fa-2x text-danger opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- Detailed Status Section -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-bar mr-2"></i>Processing Performance
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-4">
+                        The system scales workers dynamically based on the queue size. 
+                        Currently, <strong class="text-dark">{{ processing_count }}</strong> files are being processed in parallel.
+                    </p>
+                    
+                    <h4 class="small font-weight-bold">Success Rate <span class="float-right">
+                        {% set total = completed_count + failed_count %}
+                        {% if total > 0 %}
+                            {{ ((completed_count / total) * 100) | round(1) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    </span></h4>
+                    <div class="progress mb-4">
+                        {% if total > 0 %}
+                            {% set success_pct = (completed_count / total) * 100 %}
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ success_pct }}%" aria-valuenow="{{ success_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                            <div class="progress-bar bg-danger" role="progressbar" style="width: {{ 100 - success_pct }}%" aria-valuenow="{{ 100 - success_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                        {% else %}
+                             <div class="progress-bar bg-secondary" role="progressbar" style="width: 100%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">No Data</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+             <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-info-circle mr-2"></i>Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <a href="{{ url_for('files.view_data') }}" class="btn btn-primary btn-block mb-3">
+                        <i class="fas fa-list mr-2"></i>View All Files
+                    </a>
+                    <a href="{{ url_for('files.upload_file') }}" class="btn btn-outline-secondary btn-block">
+                        <i class="fas fa-plus mr-2"></i>Upload More
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .border-left-info { border-left: 0.25rem solid #17a2b8 !important; }
+    .border-left-warning { border-left: 0.25rem solid #ffc107 !important; }
+    .border-left-success { border-left: 0.25rem solid #28a745 !important; }
+    .border-left-danger { border-left: 0.25rem solid #dc3545 !important; }
+    .text-gray-300 { color: #dddfeb !important; }
+    .text-gray-800 { color: #5a5c69 !important; }
+    .opacity-50 { opacity: 0.5; }
+</style>
+
+<!-- Auto-refresh every 10 seconds -->
+<meta http-equiv="refresh" content="10">
+
 {% endblock content %}
