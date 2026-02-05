@@ -1,14 +1,78 @@
 {% extends "base.html" %}
 {% block content %}
-    <div class="jumbotron">
-        <h1 class="display-4">Welcome to the File Processor!</h1>
-        <p class="lead">This application allows you to upload image and PDF files for processing, view processed data, and monitor worker statuses.</p>
+<div class="container py-5">
+    <!-- Hero Section -->
+    <div class="jumbotron text-center bg-white shadow-sm border rounded">
+        <h1 class="display-4 text-primary font-weight-bold">
+            <i class="fas fa-file-contract mr-2"></i>File Processor
+        </h1>
+        <p class="lead text-muted">Intelligent document analysis and processing at your fingertips.</p>
         <hr class="my-4">
-        <p>Use the navigation bar above to get started.</p>
+        
         {% if current_user.is_authenticated %}
-            <p>You are logged in as <strong>{{ current_user.username }}</strong> ({{ "Admin" if current_user.is_admin else "User" }}).</p>
+            <p class="mb-4">Welcome back, <strong>{{ current_user.username }}</strong>! Ready to process more documents?</p>
+            <div class="d-flex justify-content-center">
+                <a class="btn btn-primary btn-lg mr-3 shadow-sm" href="{{ url_for('files.upload_file') }}" role="button">
+                    <i class="fas fa-upload mr-2"></i>Upload New File
+                </a>
+                <a class="btn btn-outline-secondary btn-lg shadow-sm" href="{{ url_for('files.view_data') }}" role="button">
+                    <i class="fas fa-table mr-2"></i>View Data
+                </a>
+            </div>
         {% else %}
-        <p>Please <a href="{{ url_for('auth.login') }}">log in</a> to access the features.</p>
+            <p class="mb-4">Securely upload, automatically extract data, and manage your document workflows efficiently.</p>
+            <a class="btn btn-success btn-lg shadow-sm px-5" href="{{ url_for('auth.login') }}" role="button">
+                <i class="fas fa-sign-in-alt mr-2"></i>Login to Start
+            </a>
         {% endif %}
     </div>
+
+    <!-- Features Section -->
+    <div class="row mt-5">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm hover-shadow transition-all">
+                <div class="card-body text-center">
+                    <div class="mb-3 text-primary">
+                        <i class="fas fa-cloud-upload-alt fa-3x"></i>
+                    </div>
+                    <h4 class="card-title">Easy Upload</h4>
+                    <p class="card-text text-muted">Drag & drop your PDF documents for instant processing. We handle the heavy lifting for you.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm hover-shadow transition-all">
+                <div class="card-body text-center">
+                    <div class="mb-3 text-success">
+                        <i class="fas fa-cogs fa-3x"></i>
+                    </div>
+                    <h4 class="card-title">Smart Extraction</h4>
+                    <p class="card-text text-muted">Our workers automatically identify and extract key information like names, dates, and equipment IDs.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm hover-shadow transition-all">
+                <div class="card-body text-center">
+                    <div class="mb-3 text-info">
+                        <i class="fas fa-chart-line fa-3x"></i>
+                    </div>
+                    <h4 class="card-title">Real-time Tracking</h4>
+                    <p class="card-text text-muted">Monitor the status of your documents in real-time and access extracted data through a clean dashboard.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Simple hover effect for cards */
+    .hover-shadow:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+</style>
 {% endblock content %}
