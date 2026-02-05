@@ -58,6 +58,17 @@ class MessageQueue:
             logger.error(f"Failed to publish result message: {e}")
             raise
 
+    def get_queue_size(self):
+        """Returns the number of messages in the task queue."""
+        if not self.channel or self.channel.is_closed:
+            self.connect()
+        try:
+            res = self.channel.queue_declare(queue=self.task_queue_name, durable=True, passive=True)
+            return res.method.message_count
+        except Exception as e:
+            logger.error(f"Failed to get queue size: {e}")
+            return 0
+
     def consume_tasks(self, callback):
         if not self.channel:
             self.connect()

@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from app import create_app, start_workers, shutdown_workers # Import start_workers and shutdown_workers
 from app.config import Config
-import atexit # Import atexit
+import atexit
 
 from dotenv import load_dotenv
 load_dotenv()

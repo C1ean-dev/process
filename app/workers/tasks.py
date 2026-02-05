@@ -1,11 +1,12 @@
 import os
 import logging
 import json
+import time
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.workers.handlers import FileProcessingTask
-from app.mq import mq
+from app.mq import mq, MessageQueue
 from app.config import Config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -32,30 +33,51 @@ def process_file_task(file_id: int, file_path: str, db_uri: str, session: Sessio
 def worker_main(db_uri: str):
     """
     O loop principal para um worker.
-    Escuta por tarefas e as executa.
+    Processa tarefas até que a fila esteja vazia e então termina.
     """
-    logger.info(f"Worker started. Listening for tasks...")
-
-    def callback(ch, method, properties, body):
-        worker_session = None
-        try:
-            message = json.loads(body)
-            file_id = message['file_id']
-            file_path = message['filepath']
-            logger.info(f"Worker received task: File ID {file_id}")
-
-            worker_session = _get_db_session(db_uri)
-            process_file_task(file_id, file_path, db_uri, session=worker_session)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-        except Exception as e:
-            logger.error(f"Worker encountered a critical error: {e}", exc_info=True)
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-        finally:
-            if worker_session and worker_session.is_active:
-                worker_session.close()
+    logger.info(f"Worker {os.getpid()} started. Checking for tasks...")
+    
+    # Use a local MessageQueue instance for each worker process
+    worker_mq = MessageQueue()
+    try:
+        worker_mq.connect()
+    except Exception as e:
+        logger.error(f"Worker {os.getpid()} failed to connect to MQ: {e}")
+        return
 
     try:
-        mq.consume_tasks(callback)
-    except KeyboardInterrupt:
-        logger.info("Worker received KeyboardInterrupt, shutting down gracefully.")
-        mq.close()
+        while True:
+            # Try to get a single message from the queue
+            method_frame, header_frame, body = worker_mq.channel.basic_get(
+                queue=worker_mq.task_queue_name, 
+                auto_ack=False
+            )
+            
+            if method_frame:
+                worker_session = None
+                try:
+                    message = json.loads(body)
+                    file_id = message['file_id']
+                    file_path = message['filepath']
+                    logger.info(f"Worker {os.getpid()} received task: File ID {file_id}")
+
+                    worker_session = _get_db_session(db_uri)
+                    process_file_task(file_id, file_path, db_uri, session=worker_session)
+                    
+                    # Acknowledge the message after successful processing
+                    worker_mq.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                except Exception as e:
+                    logger.error(f"Worker {os.getpid()} encountered an error processing task: {e}", exc_info=True)
+                    # Requeue=False to avoid infinite loops on bad tasks
+                    worker_mq.channel.basic_nack(delivery_tag=method_frame.delivery_tag, requeue=False)
+                finally:
+                    if worker_session:
+                        worker_session.close()
+            else:
+                # No tasks found, exit worker to free resources
+                logger.info(f"Worker {os.getpid()} found no more tasks. Shutting down.")
+                break
+    except Exception as e:
+        logger.error(f"Worker {os.getpid()} critical error: {e}")
+    finally:
+        worker_mq.close()

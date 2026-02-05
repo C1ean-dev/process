@@ -79,7 +79,7 @@
                         </td>
                         <td>
                             {% if file.status == 'completed' %}
-                                <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-success btn-sm">Download</a>
+                                <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-success btn-sm" target="_blank">Download</a>
                             {% else %}
                                 N/A
                             {% endif %}
