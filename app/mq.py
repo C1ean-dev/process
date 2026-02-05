@@ -25,7 +25,7 @@ class MessageQueue:
             raise
 
     def publish_task(self, message):
-        if not self.channel:
+        if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
             self.connect()
         try:
             self.channel.basic_publish(
@@ -37,12 +37,23 @@ class MessageQueue:
                 )
             )
             logger.info(f"Published task message to queue: {message}")
+        except (pika.exceptions.AMQPError, pika.exceptions.StreamLostError):
+            logger.warning("Connection lost while publishing task, retrying once...")
+            self.connect()
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=self.task_queue_name,
+                body=json.dumps(message),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,
+                )
+            )
         except Exception as e:
             logger.error(f"Failed to publish task message: {e}")
             raise
 
     def publish_result(self, message):
-        if not self.channel:
+        if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
             self.connect()
         try:
             self.channel.basic_publish(
@@ -54,6 +65,17 @@ class MessageQueue:
                 )
             )
             logger.info(f"Published result message to queue: {message}")
+        except (pika.exceptions.AMQPError, pika.exceptions.StreamLostError):
+            logger.warning("Connection lost while publishing result, retrying once...")
+            self.connect()
+            self.channel.basic_publish(
+                exchange='',
+                routing_key=self.results_queue_name,
+                body=json.dumps(message),
+                properties=pika.BasicProperties(
+                    delivery_mode=2,
+                )
+            )
         except Exception as e:
             logger.error(f"Failed to publish result message: {e}")
             raise

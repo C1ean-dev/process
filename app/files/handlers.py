@@ -9,9 +9,10 @@ from flask_login import current_user
 from flask_paginate import Pagination
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
+from datetime import datetime, timezone
 
 from app.models import db, File, Group, record_metric
-from app.mq import mq
+from app.mq import mq, MessageQueue
 from .forms import FileUploadForm, SearchForm
 
 logger = logging.getLogger(__name__)
@@ -73,44 +74,52 @@ class FileHandler:
 
     def _process_uploaded_files(self, files, group_id=0):
         successful_uploads = 0
-        for file in files:
-            if file and self._allowed_file(file.filename):
-                # Check actual file type via magic numbers
-                if not self._is_actual_allowed_file(file):
-                    flash(f'Skipped file "{file.filename}": File content does not match allowed types (PDF/Images).', 'danger')
-                    continue
+        local_mq = MessageQueue()
+        try:
+            for file in files:
+                if file and self._allowed_file(file.filename):
+                    # Check actual file type via magic numbers
+                    if not self._is_actual_allowed_file(file):
+                        flash(f'Skipped file "{file.filename}": File content does not match allowed types (PDF/Images).', 'danger')
+                        continue
 
-                # Check file size for PDFs
-                if file.filename.lower().endswith('.pdf') and file.content_length > current_app.config['MAX_PDF_SIZE']:
-                    flash(f'PDF file "{file.filename}" is too large. Maximum size is 200 MB.', 'danger')
-                    continue
+                    # Check file size for PDFs
+                    if file.filename.lower().endswith('.pdf') and file.content_length > current_app.config['MAX_PDF_SIZE']:
+                        flash(f'PDF file "{file.filename}" is too large. Maximum size is 200 MB.', 'danger')
+                        continue
 
-                original_filename = secure_filename(file.filename)
-                unique_filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
-                file_path_in_uploads = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+                    original_filename = secure_filename(file.filename)
+                    unique_filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
+                    file_path_in_uploads = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
 
-                file.save(file_path_in_uploads)
+                    file.save(file_path_in_uploads)
 
-                new_file = File(
-                    filename=unique_filename,
-                    original_filename=original_filename,
-                    filepath=file_path_in_uploads,
-                    user_id=current_user.id,
-                    group_id=group_id if group_id > 0 else None,
-                    status='pending'
-                )
-                db.session.add(new_file)
-                db.session.commit()
+                    new_file = File(
+                        filename=unique_filename,
+                        original_filename=original_filename,
+                        filepath=file_path_in_uploads,
+                        user_id=current_user.id,
+                        group_id=group_id if group_id > 0 else None,
+                        status='pending'
+                    )
+                    db.session.add(new_file)
+                    db.session.commit()
 
-                record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
+                    record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
 
-                mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath})
-                successful_uploads += 1
-                logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
+                    local_mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath})
+                    successful_uploads += 1
+                    logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
 
-                # O arquivo local é removido na task do worker após o upload para o R2
-            else:
-                flash(f'Skipped invalid file: {file.filename}. Allowed types are: png, jpg, jpeg, gif, pdf', 'warning')
+                    # O arquivo local é removido na task do worker após o upload para o R2
+                else:
+                    flash(f'Skipped invalid file: {file.filename}. Allowed types are: png, jpg, jpeg, gif, pdf', 'warning')
+        except Exception as e:
+            logger.error(f"Error during file processing/queueing: {e}", exc_info=True)
+            flash("An error occurred during file upload. Please try again.", "danger")
+        finally:
+            local_mq.close()
+            
         return successful_uploads
 
     def view_data(self):
@@ -139,7 +148,11 @@ class FileHandler:
         return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination, total=total_available)
 
     def _build_data_query(self, query, filter_field):
-        files_query = File.query.filter(File.status.in_(['completed', 'failed']))
+        # Base query: completed/failed AND NOT deleted
+        files_query = File.query.filter(
+            File.status.in_(['completed', 'failed']),
+            File.is_deleted == False
+        )
         
         if not current_user.is_admin:
             # User can see their own files OR files from groups they belong to
@@ -218,6 +231,35 @@ class FileHandler:
             except FileNotFoundError:
                 flash('File not found on local storage.', 'danger')
                 return redirect(url_for('files.view_data'))
+
+    def delete_file(self, file_id):
+        file_to_delete = File.query.get_or_404(file_id)
+        
+        # Check permissions
+        can_delete = False
+        if file_to_delete.user_id == current_user.id or current_user.is_admin:
+            can_delete = True
+        elif file_to_delete.group_id:
+            group = Group.query.get(file_to_delete.group_id)
+            if group and group.creator_id == current_user.id:
+                can_delete = True
+        
+        if not can_delete:
+            flash('You do not have permission to delete this file.', 'danger')
+            return redirect(url_for('files.view_data'))
+            
+        try:
+            # Soft delete only (as requested)
+            file_to_delete.is_deleted = True
+            file_to_delete.deleted_at = datetime.now(timezone.utc)
+            db.session.commit()
+            flash(f'File "{file_to_delete.original_filename}" deleted successfully.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error deleting file {file_id}: {e}", exc_info=True)
+            flash('An error occurred while deleting the file.', 'danger')
+            
+        return redirect(url_for('files.view_data'))
 
     def _get_r2_client(self):
         return boto3.client(

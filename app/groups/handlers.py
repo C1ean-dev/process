@@ -5,6 +5,7 @@ from .forms import GroupForm, AddMemberForm
 import logging
 import os
 import boto3
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,14 @@ class GroupHandler:
                 flash(f'User {user_to_add.username} added to group.', 'success')
             return redirect(url_for('groups.group_details', group_id=group.id))
             
-        # Group files
-        files = group.files
+        # Group files: 
+        # Creators see everything (including soft-deleted)
+        # Others see only non-deleted
+        if group.creator_id == current_user.id or current_user.is_admin:
+            files = File.query.filter_by(group_id=group.id).all()
+        else:
+            files = File.query.filter_by(group_id=group.id, is_deleted=False).all()
+            
         return render_template('groups/details.html', title=group.name, group=group, form=add_form, files=files)
 
     @login_required
@@ -95,6 +102,15 @@ class GroupHandler:
             return redirect(url_for('groups.group_details', group_id=group.id))
 
         try:
+            # If user is NOT the group creator/admin, perform a SOFT delete
+            if group.creator_id != current_user.id and not current_user.is_admin:
+                file_to_delete.is_deleted = True
+                file_to_delete.deleted_at = datetime.now(timezone.utc)
+                db.session.commit()
+                flash(f'File "{file_to_delete.original_filename}" marked as deleted. Only the group owner can restore or permanently delete it.', 'info')
+                return redirect(url_for('groups.group_details', group_id=group.id))
+
+            # If user IS the creator/admin, perform a PERMANENT delete
             # Delete from R2 if applicable
             if current_app.config['R2_FEATURE_FLAG'] == 'True' and file_to_delete.status == 'completed':
                 try:
@@ -117,10 +133,30 @@ class GroupHandler:
 
             db.session.delete(file_to_delete)
             db.session.commit()
-            flash(f'File "{file_to_delete.original_filename}" deleted successfully.', 'success')
+            flash(f'File "{file_to_delete.original_filename}" permanently deleted.', 'success')
         except Exception as e:
             db.session.rollback()
             logger.error(f"Error deleting file {file_id}: {e}", exc_info=True)
             flash('An error occurred while deleting the file.', 'danger')
 
+        return redirect(url_for('groups.group_details', group_id=group.id))
+
+    @login_required
+    def restore_file(self, group_id, file_id):
+        group = Group.query.get_or_404(group_id)
+        file_to_restore = File.query.get_or_404(file_id)
+
+        # Only group creator or admin can restore
+        if group.creator_id != current_user.id and not current_user.is_admin:
+            flash('Only the group owner can restore files.', 'danger')
+            return redirect(url_for('groups.group_details', group_id=group.id))
+
+        if file_to_restore.group_id != group.id:
+            flash('File does not belong to this group.', 'danger')
+            return redirect(url_for('groups.group_details', group_id=group.id))
+
+        file_to_restore.is_deleted = False
+        file_to_restore.deleted_at = None
+        db.session.commit()
+        flash(f'File "{file_to_restore.original_filename}" has been restored.', 'success')
         return redirect(url_for('groups.group_details', group_id=group.id))

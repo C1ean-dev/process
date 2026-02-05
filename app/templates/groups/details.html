@@ -81,13 +81,19 @@
                             </thead>
                             <tbody class="small">
                                 {% for file in files %}
-                                <tr>
+                                <tr class="{% if file.is_deleted %}table-light text-muted{% endif %}">
                                     <td class="px-4 align-middle font-weight-bold text-truncate" style="max-width: 200px;">
-                                        {{ file.original_filename }}
+                                        {% if file.is_deleted %}
+                                            <i class="fas fa-trash-alt mr-2"></i><del>{{ file.original_filename }}</del>
+                                        {% else %}
+                                            {{ file.original_filename }}
+                                        {% endif %}
                                     </td>
                                     <td class="align-middle text-muted">{{ file.user.username }}</td>
                                     <td class="text-center align-middle">
-                                        {% if file.status == 'completed' %}
+                                        {% if file.is_deleted %}
+                                            <span class="badge badge-secondary">Deleted</span>
+                                        {% elif file.status == 'completed' %}
                                             <span class="text-success"><i class="fas fa-check-circle"></i></span>
                                         {% elif file.status == 'processing' %}
                                             <span class="text-info"><i class="fas fa-spinner fa-spin"></i></span>
@@ -97,21 +103,37 @@
                                     </td>
                                     <td class="text-center align-middle">
                                         <div class="btn-group">
-                                            <a href="{{ url_for('files.view_data', query=file.original_filename, filter='nome') }}" class="btn btn-white btn-sm border" title="Details">
-                                                <i class="fas fa-eye text-primary"></i>
-                                            </a>
-                                            {% if file.status == 'completed' %}
-                                                <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-white btn-sm border" title="Download">
-                                                    <i class="fas fa-download text-success"></i>
+                                            {% if not file.is_deleted %}
+                                                <a href="{{ url_for('files.view_data', query=file.original_filename, filter='nome') }}" class="btn btn-white btn-sm border" title="Details">
+                                                    <i class="fas fa-eye text-primary"></i>
                                                 </a>
-                                            {% endif %}
-                                            {% if group.creator_id == current_user.id or file.user_id == current_user.id or current_user.is_admin %}
-                                            <form action="{{ url_for('groups.delete_file', group_id=group.id, file_id=file.id) }}" method="POST" onsubmit="return confirm('Delete this file permanently?');" class="d-inline">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                <button type="submit" class="btn btn-white btn-sm border" title="Delete">
-                                                    <i class="fas fa-trash-alt text-danger"></i>
-                                                </button>
-                                            </form>
+                                                {% if file.status == 'completed' %}
+                                                    <a href="{{ url_for('files.download_file', filename=file.filename) }}" class="btn btn-white btn-sm border" title="Download">
+                                                        <i class="fas fa-download text-success"></i>
+                                                    </a>
+                                                {% endif %}
+                                                {% if group.creator_id == current_user.id or file.user_id == current_user.id or current_user.is_admin %}
+                                                <form action="{{ url_for('groups.delete_file', group_id=group.id, file_id=file.id) }}" method="POST" onsubmit="return confirm('Delete this file?');" class="d-inline">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="btn btn-white btn-sm border" title="Delete">
+                                                        <i class="fas fa-trash-alt text-danger"></i>
+                                                    </button>
+                                                </form>
+                                                {% endif %}
+                                            {% else %}
+                                                {# File is soft-deleted, only owner/admin can see this row and restore #}
+                                                <form action="{{ url_for('groups.restore_file', group_id=group.id, file_id=file.id) }}" method="POST" class="d-inline">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="btn btn-white btn-sm border text-success" title="Restore">
+                                                        <i class="fas fa-undo"></i>
+                                                    </a>
+                                                </form>
+                                                <form action="{{ url_for('groups.delete_file', group_id=group.id, file_id=file.id) }}" method="POST" onsubmit="return confirm('Permanently delete this file?');" class="d-inline">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="btn btn-white btn-sm border text-danger" title="Permanent Delete">
+                                                        <i class="fas fa-times-circle"></i>
+                                                    </button>
+                                                </form>
                                             {% endif %}
                                         </div>
                                     </td>

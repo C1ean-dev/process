@@ -76,6 +76,8 @@ class File(db.Model):
     status = db.Column(db.String(50), default='pending') # pending, processing, completed, failed
     checksum = db.Column(db.String(256), nullable=True) # Add checksum column
     processed_data = db.Column(db.Text) # Store OCR or other processed data (raw text)
+    is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     nome = db.Column(db.String(255), nullable=True)
     matricula = db.Column(db.String(255), nullable=True)
     funcao = db.Column(db.String(255), nullable=True)
