@@ -1,240 +1,247 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="text-center">Upload File</h3>
+        <div class="col-md-8">
+            <div class="card border-0 shadow-lg">
+                <div class="card-header bg-primary text-white py-4">
+                    <h3 class="mb-0 text-center font-weight-bold">
+                        <i class="fas fa-cloud-upload-alt mr-2"></i>Upload for Processing
+                    </h3>
+                    <p class="text-center mb-0 mt-2 opacity-75">Send your PDFs or images for intelligent analysis</p>
                 </div>
-                <div class="card-body">
-                    <form method="POST" action="{{ url_for('files.upload_file') }}" enctype="multipart/form-data">
+                <div class="card-body p-5">
+                    <form method="POST" action="{{ url_for('files.upload_file') }}" enctype="multipart/form-data" id="upload-form">
                         {{ form.hidden_tag() }}
-                        <div class="form-group">
-                            <div id="drop-zone" class="border border-primary rounded p-4 text-center" style="cursor: pointer;">
-                                <p class="mb-2">Arraste e solte os arquivos aqui ou clique para selecionar</p>
-                                <p class="text-muted small">Tipos permitidos: PNG, JPG, JPEG, GIF, PDF (máx. 200 MB por PDF)</p>
+                        
+                        <div class="form-group mb-4">
+                            <label class="font-weight-bold mb-3 d-block text-center">Select your documents</label>
+                            
+                            <!-- Enhanced Drop Zone -->
+                            <div id="drop-zone" class="drop-zone-container border-dashed rounded p-5 text-center transition-all" style="cursor: pointer; border: 2px dashed #007bff; background-color: #f8f9fa;">
+                                <div class="drop-zone-content">
+                                    <i class="fas fa-file-pdf fa-4x text-primary mb-3"></i>
+                                    <h5 class="font-weight-bold">Drag & Drop files here</h5>
+                                    <p class="text-muted">or click to browse your computer</p>
+                                    <div class="mt-3">
+                                        <span class="badge badge-light p-2 border">PDF</span>
+                                        <span class="badge badge-light p-2 border">PNG</span>
+                                        <span class="badge badge-light p-2 border">JPG</span>
+                                    </div>
+                                    <p class="text-muted small mt-3"><i class="fas fa-info-circle mr-1"></i> Max 200MB per PDF</p>
+                                </div>
                                 {{ form.file(class="d-none", multiple="multiple", id="file-input") }}
-                                <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('file-input').click()">Selecionar Arquivos</button>
                             </div>
-                            <div id="file-list-container" class="mt-3">
-                                <ul id="file-list" class="list-group"></ul>
-                                <div id="pagination-container" class="mt-3 d-flex justify-content-center" style="display: none;">
-                                    <nav aria-label="File list pagination">
-                                        <ul class="pagination" id="pagination"></ul>
-                                    </nav>
-                                </div>
-                                <div class="mt-3 text-center">
-                                    <p class="text-muted" id="total-files">Total de arquivos selecionados: 0</p>
-                                </div>
-                            </div>
+
                             {% if form.file.errors %}
                                 {% for error in form.file.errors %}
-                                    <div class="text-danger">{{ error }}</div>
+                                    <div class="alert alert-danger mt-3">{{ error }}</div>
                                 {% endfor %}
                             {% endif %}
                         </div>
-                        <div class="form-group text-center">
-                            {{ form.submit(class="btn btn-primary") }}
+
+                        <!-- File List Preview -->
+                        <div id="file-list-container" class="mt-4" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="font-weight-bold mb-0"><i class="fas fa-list mr-2"></i>Selected Files</h6>
+                                <span class="badge badge-primary py-2 px-3 shadow-sm" id="total-files-badge">0 files</span>
+                            </div>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover border">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>File Name</th>
+                                            <th class="text-right">Size</th>
+                                            <th class="text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="file-list-table-body">
+                                        <!-- Files will be injected here -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <nav aria-label="File pagination" id="pagination-nav" class="mt-3" style="display: none;">
+                                <ul class="pagination pagination-sm justify-content-center" id="pagination">
+                                    <!-- Pagination will be injected here -->
+                                </ul>
+                            </nav>
+                        </div>
+
+                        <div class="form-group text-center mt-5">
+                            <button type="submit" class="btn btn-primary btn-lg px-5 shadow-sm" id="submit-btn">
+                                <i class="fas fa-paper-plane mr-2"></i>Start Processing
+                            </button>
                         </div>
                     </form>
                 </div>
             </div>
+
+            <!-- Helpful Tips -->
+            <div class="mt-4 row">
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-0 shadow-sm bg-light">
+                        <div class="card-body py-3">
+                            <h6 class="font-weight-bold"><i class="fas fa-lightbulb text-warning mr-2"></i>Tip</h6>
+                            <p class="small text-muted mb-0">You can select multiple files at once by holding Ctrl or Shift.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 border-0 shadow-sm bg-light">
+                        <div class="card-body py-3">
+                            <h6 class="font-weight-bold"><i class="fas fa-clock text-info mr-2"></i>Processing Time</h6>
+                            <p class="small text-muted mb-0">Files are processed in the background. You'll see the results in "View Data".</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const fileList = document.getElementById('file-list');
-        const paginationContainer = document.getElementById('pagination-container');
-        const pagination = document.getElementById('pagination');
-        const totalFiles = document.getElementById('total-files');
-        const maxSize = 200 * 1024 * 1024; // 200 MB
-        const itemsPerPage = 5;
-        let currentPage = 1;
-        let allFiles = [];
+</div>
 
-        // Drag and drop events
-        dropZone.addEventListener('dragover', (e) => {
+<style>
+    .border-dashed { border-style: dashed !important; }
+    .drop-zone-container:hover { background-color: #e9ecef !important; border-color: #0056b3 !important; }
+    .drop-zone-container.drag-over { background-color: #dee2e6 !important; transform: scale(1.02); }
+    .transition-all { transition: all 0.3s ease; }
+    .opacity-75 { opacity: 0.75; }
+    .table-sm td, .table-sm th { padding: .75rem; }
+</style>
+
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileListContainer = document.getElementById('file-list-container');
+    const fileTableBody = document.getElementById('file-list-table-body');
+    const totalFilesBadge = document.getElementById('total-files-badge');
+    const paginationNav = document.getElementById('pagination-nav');
+    const pagination = document.getElementById('pagination');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    const maxSize = 200 * 1024 * 1024; // 200 MB
+    const itemsPerPage = 5;
+    let currentPage = 1;
+    let allFiles = [];
+
+    // Drag and drop events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, e => {
             e.preventDefault();
-            dropZone.classList.add('bg-light');
+            e.stopPropagation();
+        }, false);
+    });
+
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('drag-over'));
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+    dropZone.addEventListener('drop', (e) => {
+        dropZone.classList.remove('drag-over');
+        handleFiles(Array.from(e.dataTransfer.files));
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(Array.from(e.target.files));
+    });
+
+    function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        allFiles = files;
+        fileListContainer.style.display = 'block';
+        totalFilesBadge.textContent = `${allFiles.length} file${allFiles.length > 1 ? 's' : ''}`;
+        showPage(1);
+    }
+
+    function showPage(page) {
+        currentPage = page;
+        const start = (page - 1) * itemsPerPage;
+        const end = start + itemsPerPage;
+        const filesToShow = allFiles.slice(start, end);
+
+        fileTableBody.innerHTML = '';
+        filesToShow.forEach((file) => {
+            const tr = document.createElement('tr');
+            const isTooLarge = file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize;
+            
+            tr.innerHTML = `
+                <td class="align-middle">
+                    <i class="fas ${file.name.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf text-danger' : 'fa-file-image text-info'} mr-2"></i>
+                    ${file.name}
+                </td>
+                <td class="text-right align-middle text-muted">${(file.size / 1024 / 1024).toFixed(2)} MB</td>
+                <td class="text-center align-middle">
+                    ${isTooLarge 
+                        ? '<span class="badge badge-danger px-2"><i class="fas fa-exclamation-triangle mr-1"></i>Too Large</span>' 
+                        : '<span class="badge badge-success px-2"><i class="fas fa-check mr-1"></i>Ready</span>'}
+                </td>
+            `;
+            fileTableBody.appendChild(tr);
         });
 
-        dropZone.addEventListener('dragleave', () => {
-            dropZone.classList.remove('bg-light');
-        });
+        updatePagination();
+    }
 
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('bg-light');
-            const files = Array.from(e.dataTransfer.files);
-            handleFiles(files);
-        });
+    function updatePagination() {
+        const totalPages = Math.ceil(allFiles.length / itemsPerPage);
+        pagination.innerHTML = '';
 
-        dropZone.addEventListener('click', () => {
-            fileInput.click();
-        });
-
-        fileInput.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
-            handleFiles(files);
-        });
-
-        function handleFiles(files) {
-            allFiles = files;
-            totalFiles.textContent = `Total de arquivos selecionados: ${allFiles.length}`;
-            showPage(1);
+        if (totalPages <= 1) {
+            paginationNav.style.display = 'none';
+            return;
         }
 
-        function showPage(page) {
-            currentPage = page;
-            const start = (page - 1) * itemsPerPage;
-            const end = start + itemsPerPage;
-            const filesToShow = allFiles.slice(start, end);
+        paginationNav.style.display = 'block';
 
-            fileList.innerHTML = '';
-            filesToShow.forEach((file, index) => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-                if (file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize) {
-                    li.classList.add('list-group-item-danger');
-                    li.innerHTML += ' <span class="badge badge-danger">Muito grande</span>';
-                } else {
-                    li.classList.add('list-group-item-success');
-                    li.innerHTML += ' <span class="badge badge-success">OK</span>';
-                }
-                fileList.appendChild(li);
-            });
+        // Helper to add page items
+        const addPageItem = (label, targetPage, active = false, disabled = false) => {
+            const li = document.createElement('li');
+            li.className = `page-item ${active ? 'active' : ''} ${disabled ? 'disabled' : ''}`;
+            const a = document.createElement('a');
+            a.className = 'page-link';
+            a.href = '#';
+            a.innerHTML = label;
+            if (!disabled) {
+                a.onclick = (e) => { e.preventDefault(); showPage(targetPage); };
+            }
+            li.appendChild(a);
+            pagination.appendChild(li);
+        };
 
-            updatePagination();
+        addPageItem('<i class="fas fa-chevron-left"></i>', currentPage - 1, false, currentPage === 1);
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                addPageItem(i, i, i === currentPage);
+            } else if (i === currentPage - 2 || i === currentPage + 2) {
+                addPageItem('...', 0, false, true);
+            }
         }
 
-        function updatePagination() {
-            const totalPages = Math.ceil(allFiles.length / itemsPerPage);
-            pagination.innerHTML = '';
+        addPageItem('<i class="fas fa-chevron-right"></i>', currentPage + 1, false, currentPage === totalPages);
+    }
 
-            if (totalPages <= 1) {
-                paginationContainer.style.display = 'none';
+    document.getElementById('upload-form').addEventListener('submit', function(e) {
+        const files = fileInput.files;
+        if (files.length === 0) {
+            alert('Please select at least one file.');
+            e.preventDefault();
+            return;
+        }
+        
+        for (let file of files) {
+            if (file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize) {
+                alert(`PDF file "${file.name}" is too large (Max 200MB).`);
+                e.preventDefault();
                 return;
             }
-
-            paginationContainer.style.display = 'block';
-
-            // Previous button
-            const prevLi = document.createElement('li');
-            prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-            const prevA = document.createElement('a');
-            prevA.className = 'page-link';
-            prevA.href = '#';
-            prevA.textContent = 'Anterior';
-            prevA.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (currentPage > 1) showPage(currentPage - 1);
-            });
-            prevLi.appendChild(prevA);
-            pagination.appendChild(prevLi);
-
-            // Page numbers with limit
-            const maxVisiblePages = 5;
-            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-
-            if (endPage - startPage + 1 < maxVisiblePages) {
-                startPage = Math.max(1, endPage - maxVisiblePages + 1);
-            }
-
-            // First page and ellipsis if needed
-            if (startPage > 1) {
-                const firstLi = document.createElement('li');
-                firstLi.className = 'page-item';
-                const firstA = document.createElement('a');
-                firstA.className = 'page-link';
-                firstA.href = '#';
-                firstA.textContent = '1';
-                firstA.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    showPage(1);
-                });
-                firstLi.appendChild(firstA);
-                pagination.appendChild(firstLi);
-
-                if (startPage > 2) {
-                    const ellipsisLi = document.createElement('li');
-                    ellipsisLi.className = 'page-item disabled';
-                    const ellipsisSpan = document.createElement('span');
-                    ellipsisSpan.className = 'page-link';
-                    ellipsisSpan.textContent = '...';
-                    ellipsisLi.appendChild(ellipsisSpan);
-                    pagination.appendChild(ellipsisLi);
-                }
-            }
-
-            // Visible page numbers
-            for (let i = startPage; i <= endPage; i++) {
-                const li = document.createElement('li');
-                li.className = `page-item ${i === currentPage ? 'active' : ''}`;
-                const a = document.createElement('a');
-                a.className = 'page-link';
-                a.href = '#';
-                a.textContent = i;
-                a.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    showPage(i);
-                });
-                li.appendChild(a);
-                pagination.appendChild(li);
-            }
-
-            // Last page and ellipsis if needed
-            if (endPage < totalPages) {
-                if (endPage < totalPages - 1) {
-                    const ellipsisLi = document.createElement('li');
-                    ellipsisLi.className = 'page-item disabled';
-                    const ellipsisSpan = document.createElement('span');
-                    ellipsisSpan.className = 'page-link';
-                    ellipsisSpan.textContent = '...';
-                    ellipsisLi.appendChild(ellipsisSpan);
-                    pagination.appendChild(ellipsisLi);
-                }
-
-                const lastLi = document.createElement('li');
-                lastLi.className = 'page-item';
-                const lastA = document.createElement('a');
-                lastA.className = 'page-link';
-                lastA.href = '#';
-                lastA.textContent = totalPages;
-                lastA.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    showPage(totalPages);
-                });
-                lastLi.appendChild(lastA);
-                pagination.appendChild(lastLi);
-            }
-
-            // Next button
-            const nextLi = document.createElement('li');
-            nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-            const nextA = document.createElement('a');
-            nextA.className = 'page-link';
-            nextA.href = '#';
-            nextA.textContent = 'Próximo';
-            nextA.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (currentPage < totalPages) showPage(currentPage + 1);
-            });
-            nextLi.appendChild(nextA);
-            pagination.appendChild(nextLi);
         }
-
-        document.querySelector('form').addEventListener('submit', function(e) {
-            const files = fileInput.files;
-            for (let file of files) {
-                if (file.name.toLowerCase().endsWith('.pdf') && file.size > maxSize) {
-                    alert(`PDF file "${file.name}" is too large. Maximum size is 200 MB.`);
-                    e.preventDefault();
-                    return false;
-                }
-            }
-        });
-    </script>
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Uploading...';
+    });
+</script>
 {% endblock content %}
