@@ -16,7 +16,6 @@ class SearchForm(FlaskForm):
     filter = SelectField('Search Filter', choices=[
         ('nome', 'Name'),
         ('equipamentos', 'Equipments'),
-        ('imei_numbers', 'IMEI Numbers'),
         ('patrimonio_numbers', 'Patrimonio Numbers'),
         ('matricula', 'Matricula'),
         ('funcao', 'Funcao'),
