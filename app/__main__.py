@@ -40,6 +40,6 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'recreate_db':
         recreate_db()
     else:
-        start_workers(app)  # Start workers here
-        atexit.register(shutdown_workers, app)  # Register shutdown hook, passing app instance
+        start_workers(app)
+        atexit.register(shutdown_workers, app)
         app.run(debug=True, use_reloader=False)

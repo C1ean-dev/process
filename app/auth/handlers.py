@@ -1,7 +1,7 @@
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, current_user
 from app.models import User, db, record_metric
-from app.auth.forms import LoginForm, RegistrationForm
+from app.auth.forms import LoginForm, RegistrationForm, RequestResetForm, ResetPasswordForm
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -72,6 +72,37 @@ class AuthHandler:
             return redirect(url_for('auth.login'))
             
         return render_template('register.html', title='Register', form=form)
+
+    def forgot_password(self):
+        if current_user.is_authenticated:
+            return redirect(url_for('files.home'))
+        form = RequestResetForm()
+        if form.validate_on_submit():
+            user = User.query.filter_by(email=form.email.data).first()
+            token = user.get_reset_token()
+            reset_url = url_for('auth.reset_password', token=token, _external=True)
+            # Em um cenário real, enviaríamos um e-mail aqui.
+            # Como não temos servidor SMTP configurado, vamos logar no console e avisar o usuário.
+            logger.info(f"PASSWORD RESET REQUEST: User {user.email} - Link: {reset_url}")
+            print(f"\n[DEBUG] Password Reset Link for {user.email}: {reset_url}\n")
+            flash('An email has been sent with instructions to reset your password (check console in this demo).', 'info')
+            return redirect(url_for('auth.login'))
+        return render_template('forgot_password.html', title='Reset Password', form=form)
+
+    def reset_password(self, token):
+        if current_user.is_authenticated:
+            return redirect(url_for('files.home'))
+        user = User.verify_reset_token(token)
+        if user is None:
+            flash('That is an invalid or expired token', 'warning')
+            return redirect(url_for('auth.forgot_password'))
+        form = ResetPasswordForm()
+        if form.validate_on_submit():
+            user.set_password(form.password.data)
+            db.session.commit()
+            flash('Your password has been updated! You are now able to log in', 'success')
+            return redirect(url_for('auth.login'))
+        return render_template('reset_password.html', title='Reset Password', form=form)
 
     # Métodos auxiliares para controle de lockout
     def _is_user_locked_out(self, email):
