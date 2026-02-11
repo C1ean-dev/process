@@ -12,11 +12,16 @@ from app.config import Config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+_engine = None
+_SessionFactory = None
+
 def _get_db_session(db_uri: str) -> Session:
-    """Cria e retorna uma nova sessão de banco de dados SQLAlchemy."""
-    engine = create_engine(db_uri)
-    Session = sessionmaker(bind=engine)
-    return Session()
+    """Retorna uma sessão de banco de dados, criando o engine apenas uma vez."""
+    global _engine, _SessionFactory
+    if _engine is None:
+        _engine = create_engine(db_uri, pool_size=1, max_overflow=0, pool_recycle=1800)
+        _SessionFactory = sessionmaker(bind=_engine)
+    return _SessionFactory()
 
 def process_file_task(file_id: int, file_path: str, db_uri: str, session: Session):
     """
@@ -39,21 +44,33 @@ def worker_main(db_uri: str):
     
     # Use a local MessageQueue instance for each worker process
     worker_mq = MessageQueue()
-    try:
-        worker_mq.connect()
-    except Exception as e:
-        logger.error(f"Worker {os.getpid()} failed to connect to MQ: {e}")
-        return
+    worker_mq.connect() # No longer raises if connection fails, sets use_local_fallback instead
 
     try:
         while True:
-            # Try to get a single message from the queue
-            method_frame, header_frame, body = worker_mq.channel.basic_get(
-                queue=worker_mq.task_queue_name, 
-                auto_ack=False
-            )
-            
-            if method_frame:
+            method_frame = None
+            body = None
+
+            # 1. Tenta pegar da fila LOCAL primeiro
+            from app.mq import local_task_queue
+            if not local_task_queue.empty():
+                try:
+                    body = local_task_queue.get_nowait()
+                    logger.info(f"Worker {os.getpid()} picking task from LOCAL queue.")
+                except Exception:
+                    pass
+
+            # 2. Se não tinha na local e o RabbitMQ estiver disponível, tenta dele
+            if not body and not worker_mq.use_local_fallback:
+                try:
+                    method_frame, header_frame, body = worker_mq.channel.basic_get(
+                        queue=worker_mq.task_queue_name, 
+                        auto_ack=False
+                    )
+                except Exception:
+                    worker_mq.use_local_fallback = True
+
+            if body:
                 worker_session = None
                 try:
                     message = json.loads(body)
@@ -65,16 +82,17 @@ def worker_main(db_uri: str):
                     process_file_task(file_id, file_path, db_uri, session=worker_session)
                     
                     # Acknowledge the message after successful processing
-                    worker_mq.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
+                    if method_frame:
+                        worker_mq.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
                 except Exception as e:
                     logger.error(f"Worker {os.getpid()} encountered an error processing task: {e}", exc_info=True)
-                    # Requeue=False to avoid infinite loops on bad tasks
-                    worker_mq.channel.basic_nack(delivery_tag=method_frame.delivery_tag, requeue=False)
+                    if method_frame:
+                        worker_mq.channel.basic_nack(delivery_tag=method_frame.delivery_tag, requeue=False)
                 finally:
                     if worker_session:
                         worker_session.close()
             else:
-                # No tasks found, exit worker to free resources
+                # No tasks found in either queue, exit worker
                 logger.info(f"Worker {os.getpid()} found no more tasks. Shutting down.")
                 break
     except Exception as e:

@@ -10,6 +10,7 @@ from .config import Config # Changed to relative import
 from .models import db, User, File, Group # Import models
 from flask_wtf.csrf import CSRFProtect
 from flask_login import LoginManager, current_user
+from flask_mail import Mail
 from .mq import mq # Import message queue
 from .workers.tasks import worker_main # Import worker_main
 import atexit # For graceful shutdown
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 # Event to signal background threads to stop
 shutdown_event = Event()
+
+mail = Mail()
 
 def from_json(value):
     """Jinja2 filter to parse JSON strings."""
@@ -38,6 +41,7 @@ def create_app():
 
     db.init_app(app)
     CSRFProtect(app)
+    mail.init_app(app)
 
     login_manager = LoginManager()
     login_manager.init_app(app)
@@ -67,12 +71,14 @@ def create_app():
     from app.init_register import setup_bp
     from app.workers import workers_bp # Import the new workers blueprint
     from app.groups import groups_bp # Import the groups blueprint
+    from app.editor.routes import editor_bp
 
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(files_bp) # Register the new files blueprint
     app.register_blueprint(setup_bp)
     app.register_blueprint(workers_bp) # Register the new workers blueprint
     app.register_blueprint(groups_bp) # Register the groups blueprint
+    app.register_blueprint(editor_bp)
 
     @app.route('/')
     def initial_redirect():
@@ -94,7 +100,8 @@ def start_workers(app):
     def process_results_from_queue(ctx):
         from .mq import MessageQueue
         thread_mq = MessageQueue()
-        logger.info("Results processing thread started.")
+        logger.info("Results processing thread started (Hybrid Mode).")
+        
         def callback(ch, method, properties, body):
             with ctx:
                 try:
@@ -109,6 +116,7 @@ def start_workers(app):
                     file_record = db.session.query(File).get(file_id)
                     if file_record:
                         file_record.processed_data = processed_data
+                        # ... (rest of the mapping)
                         file_record.nome = extracted_structured_data.get('nome')
                         file_record.matricula = extracted_structured_data.get('matricula')
                         file_record.funcao = extracted_structured_data.get('funcao')
@@ -133,10 +141,12 @@ def start_workers(app):
                         db.session.commit()
                         logger.info(f"Main app updated file {file_id} to status '{new_status}'.")
                     
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    if ch:
+                        ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as e:
                     logger.error(f"Error in results processing: {e}", exc_info=True)
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                    if ch and method:
+                        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
         try:
             thread_mq.consume_results(callback)
@@ -153,11 +163,15 @@ def start_workers(app):
     # 2. Start the Dynamic Worker Manager
     def worker_manager():
         from .mq import MessageQueue
+        from .models import File
         manager_mq = MessageQueue()
         worker_processes = []
         max_workers = max(1, multiprocessing.cpu_count() - 1)
         logger.info(f"Worker Manager started. Max workers: {max_workers}")
         
+        last_db_check = 0
+        db_check_interval = 60 # Check DB every 60 seconds for stuck files
+
         try:
             while not shutdown_event.is_set():
                 # Clean up finished processes
@@ -169,7 +183,20 @@ def start_workers(app):
                 except Exception as e:
                     logger.error(f"Manager failed to get queue size: {e}")
                     q_size = 0
-                    
+                
+                # Periodic DB check for stuck pending files
+                current_time = time.time()
+                if q_size == 0 and (current_time - last_db_check > db_check_interval):
+                    last_db_check = current_time
+                    with app_context:
+                        pending_files = File.query.filter_by(status='pending').all()
+                        if pending_files:
+                            logger.info(f"Found {len(pending_files)} pending files in DB but queue is empty. Re-enqueueing...")
+                            for f in pending_files:
+                                manager_mq.publish_task({'file_id': f.id, 'filepath': f.filepath})
+                            # Refresh q_size after re-enqueueing
+                            q_size = manager_mq.get_queue_size()
+
                 running = len(worker_processes)
                 
                 if q_size > 0 and running < max_workers:

@@ -8,9 +8,6 @@ from app import create_app, start_workers, shutdown_workers # Import start_worke
 from app.config import Config
 import atexit
 
-from dotenv import load_dotenv
-load_dotenv()
-
 app = create_app()
 
 def recreate_db():

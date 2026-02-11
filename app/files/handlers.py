@@ -12,7 +12,7 @@ from sqlalchemy import or_
 from datetime import datetime, timezone
 
 from app.models import db, File, Group, record_metric
-from app.mq import mq, MessageQueue
+from app.mq import MessageQueue
 from .forms import FileUploadForm, SearchForm
 
 logger = logging.getLogger(__name__)
@@ -28,21 +28,23 @@ class FileHandler:
 
     def _is_actual_allowed_file(self, file_stream):
         """Verifica o tipo real do arquivo usando magic numbers."""
-        # Lê os primeiros 2048 bytes para determinar o tipo
-        head = file_stream.read(2048)
+        head = file_stream.read(2048) # Lê os primeiros 2048 bytes para determinar o tipo
         file_stream.seek(0) # Volta para o início do stream
         
         mime = magic.from_buffer(head, mime=True)
         allowed_mimes = {
             'application/pdf': 'pdf',
             'image/png': 'png',
-            'image/jpeg': 'jpg',
-            'image/gif': 'gif'
+            'image/jpeg': 'jpg'
         }
         return mime in allowed_mimes
 
     def home(self):
         return render_template('home.html', title='Home')
+
+    def health(self):
+        from app.health import get_health_status
+        return get_health_status()
 
     def upload_file(self):
         form = FileUploadForm()
