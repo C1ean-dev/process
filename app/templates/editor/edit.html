@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Fill Data for: {{ filename }}</h3>
+                <a href="{{ url_for('editor.list_termos') }}" class="btn btn-sm btn-outline-light">Back to List</a>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    The data below will be automatically inserted into the document template.
+                </div>
+
+                <form action="{{ url_for('editor.save_termo') }}" method="POST">
+                    {{ form.hidden_tag() }}
+                    <input type="hidden" name="filename" value="{{ filename }}">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                {{ form.nome.label }}
+                                {{ form.nome(class="form-control", placeholder="John Doe") }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                {{ form.funcao.label }}
+                                {{ form.funcao(class="form-control", placeholder="Developer") }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.empregador.label }}
+                        {{ form.empregador(class="form-control", placeholder="Empresa LTDA") }}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                {{ form.matricula.label }}
+                                {{ form.matricula(class="form-control", placeholder="12345") }}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                {{ form.rg.label }}
+                                {{ form.rg(class="form-control", placeholder="00.000.000-0") }}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                {{ form.cpf.label }}
+                                {{ form.cpf(class="form-control", placeholder="000.000.000-00") }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.equipamentos.label }}
+                        {{ form.equipamentos(class="form-control", rows="4", placeholder="Example:\n1x Laptop Dell\n1x Mouse Logitech") }}
+                    </div>
+
+                    <hr>
+
+                    <div class="row align-items-end">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                {{ form.group.label }}
+                                {{ form.group(class="form-control") }}
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-right">
+                            <div id="download-msg" class="text-success mb-2" style="display:none;">
+                                <i class="fas fa-spinner fa-spin mr-1"></i> Generating your file, please wait...
+                            </div>
+                            <div class="form-group">
+                                <button type="submit" class="btn btn-primary btn-lg px-5">
+                                    <i class="fas fa-file-download mr-2"></i>Download DOCX for Review
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showDownloadMsg() {
+    // Verifica se os campos básicos estão preenchidos antes de mostrar a mensagem
+    const nome = document.querySelector('input[name="nome"]').value;
+    if (nome) {
+        document.getElementById('download-msg').style.display = 'block';
+        // Oculta após alguns segundos pois o download não redireciona a página
+        setTimeout(() => {
+            document.getElementById('download-msg').style.display = 'none';
+        }, 5000);
+    }
+}
+</script>
+{% endblock %}

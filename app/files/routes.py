@@ -11,6 +11,8 @@ file_handler = FileHandler()
 # Define as rotas e as associa aos métodos do manipulador
 # Aplica o decorador @login_required diretamente aqui
 files_bp.route('/home')(login_required(file_handler.home))
+files_bp.route('/health')(login_required(file_handler.health))
 files_bp.route('/upload', methods=['GET', 'POST'])(login_required(file_handler.upload_file))
 files_bp.route('/data', methods=['GET', 'POST'])(login_required(file_handler.view_data))
 files_bp.route('/download/<filename>')(login_required(file_handler.download_file))
+files_bp.route('/delete/<int:file_id>', methods=['POST'])(login_required(file_handler.delete_file))

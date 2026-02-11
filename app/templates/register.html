@@ -1,56 +1,102 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="text-center">Register New User</h3>
+        <div class="col-md-6 col-lg-5">
+            <div class="card border-0 shadow-lg overflow-hidden">
+                <div class="card-header bg-primary text-white py-4">
+                    <h3 class="mb-0 text-center font-weight-bold">
+                        <i class="fas fa-user-plus mr-2"></i>Create Account
+                    </h3>
+                    <p class="text-center mb-0 mt-2 opacity-75 small">Register a new user to the system</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4 p-md-5">
                     <form method="POST" action="{{ url_for('auth.register') }}">
                         {{ form.hidden_tag() }}
-                        <div class="form-group">
-                            {{ form.username.label(class="form-control-label") }}
-                            {{ form.username(class="form-control", placeholder="Enter username") }}
-                            {% if form.username.errors %}
-                                {% for error in form.username.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+                        
+                        <!-- Username -->
+                        <div class="form-group mb-3">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Username</label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-user text-muted"></i></span>
+                                </div>
+                                {{ form.username(class="form-control border-left-0 " + ("is-invalid" if form.username.errors else ""), placeholder="Choose a username") }}
+                                {% if form.username.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.username.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-group">
-                            {{ form.email.label(class="form-control-label") }}
-                            {{ form.email(class="form-control", placeholder="Enter email") }}
-                            {% if form.email.errors %}
-                                {% for error in form.email.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+
+                        <!-- Email -->
+                        <div class="form-group mb-3">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Email Address</label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-envelope text-muted"></i></span>
+                                </div>
+                                {{ form.email(class="form-control border-left-0 " + ("is-invalid" if form.email.errors else ""), placeholder="Enter email address") }}
+                                {% if form.email.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.email.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-group">
-                            {{ form.password.label(class="form-control-label") }}
-                            {{ form.password(class="form-control", placeholder="Enter password") }}
-                            {% if form.password.errors %}
-                                {% for error in form.password.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+
+                        <!-- Password -->
+                        <div class="form-group mb-3">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Password</label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-lock text-muted"></i></span>
+                                </div>
+                                {{ form.password(class="form-control border-left-0 " + ("is-invalid" if form.password.errors else ""), placeholder="Create a password") }}
+                                {% if form.password.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.password.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-group">
-                            {{ form.confirm_password.label(class="form-control-label") }}
-                            {{ form.confirm_password(class="form-control", placeholder="Confirm password") }}
-                            {% if form.confirm_password.errors %}
-                                {% for error in form.confirm_password.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+
+                        <!-- Confirm Password -->
+                        <div class="form-group mb-4">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Confirm Password</label>
+                            <div class="input-group">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-check-double text-muted"></i></span>
+                                </div>
+                                {{ form.confirm_password(class="form-control border-left-0 " + ("is-invalid" if form.confirm_password.errors else ""), placeholder="Repeat password") }}
+                                {% if form.confirm_password.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.confirm_password.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-group text-center">
-                            {{ form.submit(class="btn btn-primary") }}
+
+                        <div class="form-group mt-5">
+                            <button type="submit" class="btn btn-primary btn-block btn-lg shadow-sm">
+                                <i class="fas fa-user-check mr-2"></i>Register User
+                            </button>
                         </div>
                     </form>
+                </div>
+                <div class="card-footer bg-light py-3 text-center border-0">
+                    <a href="{{ url_for('files.home') }}" class="text-muted small"><i class="fas fa-arrow-left mr-1"></i> Back to Dashboard</a>
                 </div>
             </div>
         </div>
     </div>
+</div>
+
+<style>
+    .input-group-text { border-color: #ced4da; }
+    .form-control:focus { box-shadow: none; border-color: #007bff; }
+    .input-group .form-control:focus + .input-group-prepend .input-group-text { border-color: #007bff; }
+    .opacity-75 { opacity: 0.75; }
+</style>
 {% endblock content %}

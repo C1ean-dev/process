@@ -4,10 +4,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DuplicateChecker:
-    """
-    Encapsula a lógica para verificação de arquivos duplicados.
-    """
-
     def _calculate_checksum(self, filepath):
         """Calcula o checksum SHA-256 de um arquivo."""
         hasher = hashlib.sha256()
@@ -37,14 +33,12 @@ class DuplicateChecker:
                 return False
 
             file_record.checksum = checksum
-            
-            # Procura por outro arquivo com o mesmo checksum
-            existing_file = db_session.query(File).filter(
-                File.checksum == checksum,
-                File.id != file_id
-            ).first()
-
-            db_session.commit()
+            if checksum:
+                existing_file = db_session.query(File).filter(
+                    File.checksum == checksum,
+                    File.id != file_id
+                ).first()
+                db_session.commit()
 
             if existing_file:
                 logger.info(f"Duplicate file found: {filepath} (Checksum: {checksum}, Existing File ID: {existing_file.id})")
@@ -52,7 +46,6 @@ class DuplicateChecker:
             else:
                 logger.info(f"No duplicate found for {filepath} (Checksum: {checksum})")
                 return False
-
         except Exception as e:
             logger.error(f"Error processing file {filepath} for duplicates: {e}", exc_info=True)
             db_session.rollback()

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="font-weight-bold text-dark mb-0">
+            <i class="fas fa-users mr-2 text-primary"></i>My Groups
+        </h2>
+        <a href="{{ url_for('groups.create_group') }}" class="btn btn-primary shadow-sm">
+            <i class="fas fa-plus mr-2"></i>Create New Group
+        </a>
+    </div>
+
+    <div class="row">
+        {% for group in groups %}
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm hover-shadow transition-all">
+                <div class="card-body">
+                    <h5 class="card-title font-weight-bold">{{ group.name }}</h5>
+                    <p class="card-text text-muted small">{{ group.description or 'No description provided.' }}</p>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <span class="small text-muted">
+                            <i class="fas fa-user-friends mr-1"></i> {{ group.members | length }} members
+                        </span>
+                        <a href="{{ url_for('groups.group_details', group_id=group.id) }}" class="btn btn-outline-primary btn-sm">
+                            View Details
+                        </a>
+                    </div>
+                </div>
+                <div class="card-footer bg-light border-0 py-2">
+                    <small class="text-muted">Created by {{ group.creator.username }}</small>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center py-5">
+            <div class="text-muted">
+                <i class="fas fa-users fa-4x mb-3"></i>
+                <p class="lead">You are not part of any groups yet.</p>
+                <a href="{{ url_for('groups.create_group') }}" class="btn btn-primary mt-2">Create your first group</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .hover-shadow:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+    .transition-all { transition: all 0.3s ease; }
+</style>
+{% endblock content %}

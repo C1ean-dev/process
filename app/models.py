@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin # Import UserMixin
 import json
+from flask import current_app
+from itsdangerous import URLSafeTimedSerializer as Serializer
 
 db = SQLAlchemy()
 
@@ -21,7 +23,7 @@ class User(db.Model, UserMixin): # Inherit UserMixin
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128))
+    password_hash = db.Column(db.String(256))
     is_admin = db.Column(db.Boolean, default=False)
     registration_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime, nullable=True)
@@ -49,6 +51,19 @@ class User(db.Model, UserMixin): # Inherit UserMixin
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def get_reset_token(self):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        return s.dumps({'user_id': self.id})
+
+    @staticmethod
+    def verify_reset_token(token, expires_sec=1800):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            user_id = s.loads(token, max_age=expires_sec)['user_id']
+        except:
+            return None
+        return User.query.get(user_id)
+
     def __repr__(self):
         return f'<User {self.username}>'
 
@@ -61,6 +76,8 @@ class File(db.Model):
     status = db.Column(db.String(50), default='pending') # pending, processing, completed, failed
     checksum = db.Column(db.String(256), nullable=True) # Add checksum column
     processed_data = db.Column(db.Text) # Store OCR or other processed data (raw text)
+    is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     nome = db.Column(db.String(255), nullable=True)
     matricula = db.Column(db.String(255), nullable=True)
     funcao = db.Column(db.String(255), nullable=True)
@@ -74,6 +91,9 @@ class File(db.Model):
 
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     user = db.relationship('User', backref=db.backref('files', lazy=True))
+    
+    group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=True)
+    group = db.relationship('Group', backref=db.backref('files', lazy=True))
 
     def __repr__(self):
         return f'<File {self.filename}>'
@@ -87,3 +107,23 @@ class Metric(db.Model):
 
     def __repr__(self):
         return f'<Metric {self.name} at {self.timestamp}>'
+
+# Association table for User and Group
+group_members = db.Table('group_members',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('group_id', db.Integer, db.ForeignKey('group.id'), primary_key=True)
+)
+
+class Group(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Relationship to members
+    members = db.relationship('User', secondary=group_members, backref=db.backref('groups', lazy='dynamic'))
+    creator = db.relationship('User', foreign_keys=[creator_id], backref='created_groups')
+
+    def __repr__(self):
+        return f'<Group {self.name}>'

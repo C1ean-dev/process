@@ -1,42 +1,88 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="text-center">Login</h3>
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-lg mt-5">
+                <div class="card-header bg-primary text-white py-4 text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-user-lock fa-3x"></i>
+                    </div>
+                    <h3 class="mb-0 font-weight-bold">Welcome Back</h3>
+                    <p class="mb-0 mt-2 opacity-75 small">Please sign in to continue</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4 p-md-5">
                     <form method="POST" action="{{ url_for('auth.login') }}">
                         {{ form.hidden_tag() }}
-                        <div class="form-group">
-                            {{ form.email.label(class="form-control-label") }}
-                            {{ form.email(class="form-control", placeholder="Enter email") }}
-                            {% if form.email.errors %}
-                                {% for error in form.email.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+                        
+                        <!-- Email -->
+                        <div class="form-group mb-4">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Email Address</label>
+                            <div class="input-group shadow-sm">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-envelope text-muted"></i></span>
+                                </div>
+                                {{ form.email(class="form-control border-left-0 " + ("is-invalid" if form.email.errors else ""), placeholder="name@example.com") }}
+                                {% if form.email.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.email.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-group">
-                            {{ form.password.label(class="form-control-label") }}
-                            {{ form.password(class="form-control", placeholder="Enter password") }}
-                            {% if form.password.errors %}
-                                {% for error in form.password.errors %}
-                                    <div class="text-danger">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
+
+                        <!-- Password -->
+                        <div class="form-group mb-4">
+                            <label class="font-weight-bold small text-muted text-uppercase mb-2">Password</label>
+                            <div class="input-group shadow-sm">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-right-0"><i class="fas fa-key text-muted"></i></span>
+                                </div>
+                                {{ form.password(class="form-control border-left-0 " + ("is-invalid" if form.password.errors else ""), placeholder="Enter your password") }}
+                                {% if form.password.errors %}
+                                    <div class="invalid-feedback">
+                                        {% for error in form.password.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <div class="form-check">
-                            {{ form.remember(class="form-check-input") }}
-                            {{ form.remember.label(class="form-check-label") }}
+
+                        <!-- Remember Me & Forgot Password -->
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="custom-control custom-checkbox">
+                                {{ form.remember(class="custom-control-input", id="customCheck1") }}
+                                <label class="custom-control-label text-muted small" for="customCheck1">Remember my session</label>
+                            </div>
+                            <a href="{{ url_for('auth.forgot_password') }}" class="small text-primary font-weight-bold">Forgot Password?</a>
                         </div>
-                        <div class="form-group text-center mt-3">
-                            {{ form.submit(class="btn btn-primary") }}
+
+                        <div class="form-group mb-0">
+                            <button type="submit" class="btn btn-primary btn-block btn-lg shadow-sm">
+                                <i class="fas fa-sign-in-alt mr-2"></i>Login
+                            </button>
                         </div>
                     </form>
                 </div>
+                <div class="card-footer bg-light py-3 text-center border-0">
+                    <p class="text-muted small mb-2">Authorized access only</p>
+                    <a href="{{ url_for('auth.request_magic_link') }}" class="small text-primary font-weight-bold">New user? Register here</a>
+                </div>
+            </div>
+            
+            <div class="text-center mt-4">
+                <a href="{{ url_for('files.home') }}" class="text-secondary small">
+                    <i class="fas fa-home mr-1"></i> Return to Home
+                </a>
             </div>
         </div>
     </div>
+</div>
+
+<style>
+    .input-group-text { border-color: #dee2e6; }
+    .form-control { border-color: #dee2e6; height: calc(1.5em + .75rem + 10px); }
+    .form-control:focus { box-shadow: none; border-color: #007bff; }
+    .opacity-75 { opacity: 0.75; }
+    .custom-control-label { cursor: pointer; user-select: none; }
+</style>
 {% endblock content %}

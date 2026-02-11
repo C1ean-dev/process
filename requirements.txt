@@ -17,3 +17,8 @@ prometheus-client
 plotly
 matplotlib
 pika
+python-magic-bin
+psycopg2-binary
+python-docx
+xhtml2pdf
+Flask-Mail

@@ -2,15 +2,17 @@ import os
 import uuid
 import logging
 import boto3
+import magic
 from botocore.exceptions import ClientError
 from flask import render_template, redirect, url_for, flash, request, current_app, send_from_directory
 from flask_login import current_user
 from flask_paginate import Pagination
 from werkzeug.utils import secure_filename
 from sqlalchemy import or_
+from datetime import datetime, timezone
 
-from app.models import db, File, record_metric
-from app.mq import mq
+from app.models import db, File, Group, record_metric
+from app.mq import MessageQueue
 from .forms import FileUploadForm, SearchForm
 
 logger = logging.getLogger(__name__)
@@ -24,11 +26,34 @@ class FileHandler:
         return '.' in filename and \
                filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
+    def _is_actual_allowed_file(self, file_stream):
+        """Verifica o tipo real do arquivo usando magic numbers."""
+        head = file_stream.read(2048) # Lê os primeiros 2048 bytes para determinar o tipo
+        file_stream.seek(0) # Volta para o início do stream
+        
+        mime = magic.from_buffer(head, mime=True)
+        allowed_mimes = {
+            'application/pdf': 'pdf',
+            'image/png': 'png',
+            'image/jpeg': 'jpg'
+        }
+        return mime in allowed_mimes
+
     def home(self):
         return render_template('home.html', title='Home')
 
+    def health(self):
+        from app.health import get_health_status
+        return get_health_status()
+
     def upload_file(self):
         form = FileUploadForm()
+        # Populate group choices
+        user_groups = current_user.groups.all()
+        created_groups = Group.query.filter_by(creator_id=current_user.id).all()
+        all_groups = list(set(user_groups + created_groups))
+        form.group.choices = [(0, 'No Group')] + [(g.id, g.name) for g in all_groups]
+
         if request.method == 'POST':
             uploaded_files = request.files.getlist('file')
             
@@ -36,7 +61,9 @@ class FileHandler:
                 flash('No selected file(s)', 'danger')
                 return redirect(request.url)
 
-            successful_uploads = self._process_uploaded_files(uploaded_files)
+            # Get group id from form
+            group_id = int(request.form.get('group', 0))
+            successful_uploads = self._process_uploaded_files(uploaded_files, group_id)
             
             if successful_uploads > 0:
                 flash(f'{successful_uploads} file(s) uploaded successfully and added to processing queue!', 'success')
@@ -47,40 +74,54 @@ class FileHandler:
             
         return render_template('upload.html', title='Upload File', form=form)
 
-    def _process_uploaded_files(self, files):
+    def _process_uploaded_files(self, files, group_id=0):
         successful_uploads = 0
-        for file in files:
-            if file and self._allowed_file(file.filename):
-                # Check file size for PDFs
-                if file.filename.lower().endswith('.pdf') and file.content_length > current_app.config['MAX_PDF_SIZE']:
-                    flash(f'PDF file "{file.filename}" is too large. Maximum size is 200 MB.', 'danger')
-                    continue
+        local_mq = MessageQueue()
+        try:
+            for file in files:
+                if file and self._allowed_file(file.filename):
+                    # Check actual file type via magic numbers
+                    if not self._is_actual_allowed_file(file):
+                        flash(f'Skipped file "{file.filename}": File content does not match allowed types (PDF/Images).', 'danger')
+                        continue
 
-                original_filename = secure_filename(file.filename)
-                unique_filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
-                file_path_in_uploads = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
+                    # Check file size for PDFs
+                    if file.filename.lower().endswith('.pdf') and file.content_length > current_app.config['MAX_PDF_SIZE']:
+                        flash(f'PDF file "{file.filename}" is too large. Maximum size is 200 MB.', 'danger')
+                        continue
 
-                file.save(file_path_in_uploads)
+                    original_filename = secure_filename(file.filename)
+                    unique_filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
+                    file_path_in_uploads = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
 
-                new_file = File(
-                    filename=unique_filename,
-                    original_filename=original_filename,
-                    filepath=file_path_in_uploads,
-                    user_id=current_user.id,
-                    status='pending'
-                )
-                db.session.add(new_file)
-                db.session.commit()
+                    file.save(file_path_in_uploads)
 
-                record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
+                    new_file = File(
+                        filename=unique_filename,
+                        original_filename=original_filename,
+                        filepath=file_path_in_uploads,
+                        user_id=current_user.id,
+                        group_id=group_id if group_id > 0 else None,
+                        status='pending'
+                    )
+                    db.session.add(new_file)
+                    db.session.commit()
 
-                mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath})
-                successful_uploads += 1
-                logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
+                    record_metric('file_upload', 1, {'user_id': current_user.id, 'file_id': new_file.id})
 
-                # O arquivo local é removido na task do worker após o upload para o R2
-            else:
-                flash(f'Skipped invalid file: {file.filename}. Allowed types are: png, jpg, jpeg, gif, pdf', 'warning')
+                    local_mq.publish_task({'file_id': new_file.id, 'filepath': new_file.filepath})
+                    successful_uploads += 1
+                    logger.info(f"File '{original_filename}' uploaded by '{current_user.username}' and added to queue.")
+
+                    # O arquivo local é removido na task do worker após o upload para o R2
+                else:
+                    flash(f'Skipped invalid file: {file.filename}. Allowed types are: png, jpg, jpeg, gif, pdf', 'warning')
+        except Exception as e:
+            logger.error(f"Error during file processing/queueing: {e}", exc_info=True)
+            flash("An error occurred during file upload. Please try again.", "danger")
+        finally:
+            local_mq.close()
+            
         return successful_uploads
 
     def view_data(self):
@@ -100,18 +141,34 @@ class FileHandler:
         files = files_query.offset((page - 1) * per_page).limit(per_page).all()
         pagination = Pagination(page=page, per_page=per_page, total=total_filtered, css_framework='bootstrap4')
 
-        # Total PDFs uploaded by the user
-        total_pdfs = File.query.filter_by(user_id=current_user.id).count()
+        # Total PDFs available to the user (own + group files)
+        total_available = self._build_data_query('', '').count()
 
         if query:
             flash(f"Showing results for '{query}' in '{filter_field}'", 'info')
 
-        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination, total=total_pdfs)
+        return render_template('data.html', title='View Data', files=files, search_form=search_form, current_query=query, current_filter=filter_field, pagination=pagination, total=total_available)
 
     def _build_data_query(self, query, filter_field):
-        files_query = File.query.filter(File.status.in_(['completed', 'failed']))
+        # Base query: completed/failed AND NOT deleted
+        files_query = File.query.filter(
+            File.status.in_(['completed', 'failed']),
+            File.is_deleted == False
+        )
+        
         if not current_user.is_admin:
-            files_query = files_query.filter_by(user_id=current_user.id)
+            # User can see their own files OR files from groups they belong to
+            user_group_ids = [g.id for g in current_user.groups.all()]
+            user_created_group_ids = [g.id for g in Group.query.filter_by(creator_id=current_user.id).all()]
+            all_group_ids = list(set(user_group_ids + user_created_group_ids))
+            
+            files_query = files_query.filter(
+                or_(
+                    File.user_id == current_user.id,
+                    File.group_id.in_(all_group_ids)
+                )
+            )
+
         files_query = files_query.order_by(File.upload_date.desc())
         
         if not query:
@@ -140,7 +197,14 @@ class FileHandler:
             flash('File not found.', 'danger')
             return redirect(url_for('files.view_data'))
         
-        if file_record.user_id != current_user.id and not current_user.is_admin:
+        # Check permissions: owner, admin, or group member
+        is_member = False
+        if file_record.group_id:
+            group = Group.query.get(file_record.group_id)
+            if group and current_user in group.members:
+                is_member = True
+
+        if file_record.user_id != current_user.id and not current_user.is_admin and not is_member:
             flash('You are not authorized to download this file.', 'danger')
             return redirect(url_for('files.view_data'))
 
@@ -169,6 +233,35 @@ class FileHandler:
             except FileNotFoundError:
                 flash('File not found on local storage.', 'danger')
                 return redirect(url_for('files.view_data'))
+
+    def delete_file(self, file_id):
+        file_to_delete = File.query.get_or_404(file_id)
+        
+        # Check permissions
+        can_delete = False
+        if file_to_delete.user_id == current_user.id or current_user.is_admin:
+            can_delete = True
+        elif file_to_delete.group_id:
+            group = Group.query.get(file_to_delete.group_id)
+            if group and group.creator_id == current_user.id:
+                can_delete = True
+        
+        if not can_delete:
+            flash('You do not have permission to delete this file.', 'danger')
+            return redirect(url_for('files.view_data'))
+            
+        try:
+            # Soft delete only (as requested)
+            file_to_delete.is_deleted = True
+            file_to_delete.deleted_at = datetime.now(timezone.utc)
+            db.session.commit()
+            flash(f'File "{file_to_delete.original_filename}" deleted successfully.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error deleting file {file_id}: {e}", exc_info=True)
+            flash('An error occurred while deleting the file.', 'danger')
+            
+        return redirect(url_for('files.view_data'))
 
     def _get_r2_client(self):
         return boto3.client(
