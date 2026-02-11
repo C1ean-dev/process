@@ -29,9 +29,13 @@ class Config:
     R2_FEATURE_FLAG = 'True'
     ENABLE_OCR = 'True'
 
-    # External tool paths (adjust as needed for your environment)
-    TESSERACT_CMD = os.path.join(PROJECT_ROOT, 'libs', 'Tesseract-OCR', 'tesseract.exe')
-    POPPLER_PATH = os.path.join(PROJECT_ROOT, 'libs', 'poppler-25.11.0', 'Library', 'bin')
+    # External tool paths
+    if os.name == 'nt':  # Windows
+        TESSERACT_CMD = os.path.join(PROJECT_ROOT, 'libs', 'Tesseract-OCR', 'tesseract.exe')
+        POPPLER_PATH = os.path.join(PROJECT_ROOT, 'libs', 'poppler-25.11.0', 'Library', 'bin')
+    else:  # Linux (EC2)
+        TESSERACT_CMD = 'tesseract'  # Instalado via dnf no PATH
+        POPPLER_PATH = None          # Instalado via dnf no PATH
 
     # Cloudflare R2 (S3-compatible) Configuration
     CLOUDFLARE_ACCOUNT_ID = os.environ.get('CLOUDFLARE_ACCOUNT_ID')
